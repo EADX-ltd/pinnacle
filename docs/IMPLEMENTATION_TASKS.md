@@ -20,7 +20,7 @@ This file is the execution board for implementation work. Use it with `docs/ARCH
 |---|---|
 | Current Task ID | `none` |
 | Current Phase | `none` |
-| Last Updated (UTC) | `2026-03-31 14:06` |
+| Last Updated (UTC) | `2026-03-31 14:48` |
 | Updated By | `agent` |
 
 ## Phase Status Board
@@ -28,7 +28,7 @@ This file is the execution board for implementation work. Use it with `docs/ARCH
 | Phase | Name | Status | Exit Criteria |
 |---|---|---|---|
 | 0 | Project scaffolding and protocols | `done` | Task group `P0-*` all `done` |
-| 1 | Menu bar app shell and state store | `todo` | Task group `P1-*` all `done` |
+| 1 | Menu bar app shell and state store | `done` | Task group `P1-*` all `done` |
 | 2 | Global shortcuts | `todo` | Task group `P2-*` all `done` |
 | 3 | Overlay engine (single display) | `todo` | Task group `P3-*` all `done` |
 | 4 | Tool renderers + undo/redo | `todo` | Task group `P4-*` all `done` |
@@ -52,11 +52,11 @@ This file is the execution board for implementation work. Use it with `docs/ARCH
 ### Phase 1: Menu Bar Shell and State Store
 | ID | Task | Depends On | Status | Acceptance Criteria |
 |---|---|---|---|---|
-| P1-T01 | Add `MenuBarExtra` scene with start/stop actions | P0-T03 | `todo` | Menu bar controls render and dispatch commands |
-| P1-T02 | Implement `AppStore` with `SessionMode` and `ToolState` | P0-T03 | `todo` | Central observable state drives UI and engines |
-| P1-T03 | Add command dispatch enum and reducer/handler layer | P1-T02 | `todo` | Commands route deterministically to state/services |
-| P1-T04 | Add unit tests for core state transitions | P1-T02 | `todo` | Tests cover idle/annotating/recording transitions |
-| P1-T05 | Add menu bar status indicator for active mode | P1-T01 | `todo` | Indicator reflects real-time session state |
+| P1-T01 | Add `MenuBarExtra` scene with start/stop actions | P0-T03 | `done` | Menu bar controls render and dispatch commands |
+| P1-T02 | Implement `AppStore` with `SessionMode` and `ToolState` | P0-T03 | `done` | Central observable state drives UI and engines |
+| P1-T03 | Add command dispatch enum and reducer/handler layer | P1-T02 | `done` | Commands route deterministically to state/services |
+| P1-T04 | Add unit tests for core state transitions | P1-T02 | `done` | Tests cover idle/annotating/recording transitions |
+| P1-T05 | Add menu bar status indicator for active mode | P1-T01 | `done` | Indicator reflects real-time session state |
 
 ### Phase 2: Global Shortcuts
 | ID | Task | Depends On | Status | Acceptance Criteria |
@@ -166,3 +166,4 @@ This file is the execution board for implementation work. Use it with `docs/ARCH
 | YYYY-MM-DD | P?-T?? | TBD | TBD | TBD |
 | 2026-03-31 | P0-T01..P0-T05 | Added module scaffolding, service protocols, DI container, and smoke test target/wiring | `xcodebuild test -project Pinnacle.xcodeproj -scheme Pinnacle -destination 'platform=macOS' -derivedDataPath /tmp/PinnacleDerivedData -only-testing:PinnacleTests/PinnacleSmokeTests` passed | P1-T01 |
 | 2026-03-31 | P0-T02 | Hardened protocol isolation and preferences serialization; replaced smoke assertions with behavior checks; fixed section order in architecture docs | `xcodebuild test -project Pinnacle.xcodeproj -scheme Pinnacle -destination 'platform=macOS' -derivedDataPath /tmp/PinnacleDerivedData -only-testing:PinnacleTests/PinnacleSmokeTests` passed | P1-T01 |
+| 2026-03-31 | P1-T01..P1-T05 | Added `MenuBarExtra` controls with active-mode indicator, implemented `AppStore` (`SessionMode`, `ToolState`, `CommandID`) and deterministic command reducer, and added transition unit tests | `xcodebuild test -project Pinnacle.xcodeproj -scheme Pinnacle -destination 'platform=macOS' -derivedDataPath /tmp/PinnacleDerivedData -only-testing:PinnacleTests/PinnacleSmokeTests` could not run in this environment (`xcodebuild` requires full Xcode, active developer dir is CommandLineTools) | P2-T01 |

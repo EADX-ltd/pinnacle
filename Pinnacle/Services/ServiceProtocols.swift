@@ -1,10 +1,13 @@
 import Foundation
+import os
 
+@MainActor
 protocol ShortcutService {
     func registerDefaults() throws
     func unregisterAll() throws
 }
 
+@MainActor
 protocol OverlayService {
     func startOverlay()
     func stopOverlay()
@@ -38,11 +41,13 @@ struct PreferenceKey<Value: Codable> {
     let defaultValue: Value
 }
 
+@MainActor
 struct NoOpShortcutService: ShortcutService {
     func registerDefaults() throws {}
     func unregisterAll() throws {}
 }
 
+@MainActor
 struct NoOpOverlayService: OverlayService {
     func startOverlay() {}
     func stopOverlay() {}
@@ -70,6 +75,7 @@ struct NoOpPermissionService: PermissionService {
 @MainActor
 final class UserDefaultsPreferencesService: PreferencesService {
     private let defaults: UserDefaults
+    private let logger = Logger(subsystem: "Pinnacle", category: "Preferences")
 
     init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -83,6 +89,7 @@ final class UserDefaultsPreferencesService: PreferencesService {
         do {
             return try JSONDecoder().decode(T.self, from: data)
         } catch {
+            logger.error("Failed to decode preference for key \(key.name, privacy: .public): \(String(describing: error), privacy: .public)")
             return key.defaultValue
         }
     }
@@ -92,7 +99,7 @@ final class UserDefaultsPreferencesService: PreferencesService {
             let data = try JSONEncoder().encode(value)
             defaults.set(data, forKey: key.name)
         } catch {
-            assertionFailure("Failed to encode preference for key \(key.name): \(error)")
+            logger.error("Failed to encode preference for key \(key.name, privacy: .public): \(String(describing: error), privacy: .public)")
         }
     }
 }
