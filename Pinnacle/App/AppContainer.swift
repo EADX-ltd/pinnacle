@@ -27,7 +27,7 @@ final class AppContainer {
     }
     static let live = AppContainer(
         shortcutService: AppKitShortcutService(),
-        overlayService: NoOpOverlayService(),
+        overlayService: AppKitOverlayService(),
         recordingService: InMemoryRecordingService(),
         permissionService: NoOpPermissionService(),
         preferencesService: UserDefaultsPreferencesService()
