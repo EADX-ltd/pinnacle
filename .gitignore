@@ -1,0 +1,14 @@
+# Xcode and Swift build artifacts
+DerivedData/
+build/
+*.xcarchive
+*.xcresult
+
+# User-specific IDE files
+*.xcuserstate
+*.xccheckout
+*.moved-aside
+*.xcscmblueprint
+
+# macOS filesystem noise
+.DS_Store
