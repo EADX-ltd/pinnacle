@@ -26,7 +26,7 @@ final class AppContainer {
         self.preferencesService = preferencesService
     }
     static let live = AppContainer(
-        shortcutService: NoOpShortcutService(),
+        shortcutService: AppKitShortcutService(),
         overlayService: NoOpOverlayService(),
         recordingService: InMemoryRecordingService(),
         permissionService: NoOpPermissionService(),

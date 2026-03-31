@@ -289,7 +289,7 @@ The concrete, task-level execution board is `docs/IMPLEMENTATION_TASKS.md` and m
 ### 11.1 Phase Checklist
 - [x] Phase 0: Project scaffolding and protocols
 - [x] Phase 1: Menu bar app shell and state store
-- [ ] Phase 2: Global shortcuts
+- [x] Phase 2: Global shortcuts
 - [ ] Phase 3: Overlay engine (single display)
 - [ ] Phase 4: Tool renderers + undo/redo
 - [ ] Phase 5: Multi-display support
@@ -439,6 +439,7 @@ Every implementation phase must satisfy all gates below before being marked comp
 | 2026-03-31 | 0 | Introduced protocol-first service layer with `AppContainer` composition root and no-op/in-memory bootstrap implementations | Establishes strict module boundaries early while keeping Phase 0 startup stable and testable | Enables future phase services to swap concrete implementations without changing UI/domain contracts; adds runnable smoke-test target baseline |
 | 2026-03-31 | 0 | Updated protocol isolation contracts and preference serialization rules; reordered section 4 headings sequentially | Addresses concrete review findings for concurrency correctness, persistence safety, and document navigability | Prevents actor isolation leaks and non-codable preference writes; improves test signal quality and architecture readability |
 | 2026-03-31 | 1 | Added `MenuBarExtra` app shell, introduced `AppStore` with `SessionMode`/`ToolState`, and centralized command dispatch via `CommandID` reducer for annotation and recording lifecycle | Establishes a deterministic, testable state transition core for UI and service orchestration while exposing real-time active-mode status in the menu bar | Completes Phase 1 deliverables and provides a stable base for Phase 2 shortcut routing; validation: transition tests added, but `xcodebuild` execution is currently blocked in this environment because full Xcode is not configured |
+| 2026-03-31 | 2 | Added a codable shortcut model/default keymap, conflict fallback validator, and `AppKitShortcutService` for local/global key event routing; wired shortcut registration and persisted bindings through `AppStore` | Delivers Phase 2 global shortcut routing with deterministic command mapping and a safe fallback when user bindings conflict | Completes Phase 2 deliverables and enables shortcut-driven lifecycle/tool selection; validation: new shortcut tests added but `xcodebuild` execution remains blocked in this environment (active developer directory is CommandLineTools), known limitation: undo/redo/clear/color/stroke/radial command handlers are currently intentional no-ops until later phases |
 
 ## 14. Risks and Mitigations
 - Global hotkey API edge cases:

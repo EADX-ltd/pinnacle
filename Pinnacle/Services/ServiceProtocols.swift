@@ -1,9 +1,10 @@
 import Foundation
 import os
+import AppKit
 
 @MainActor
 protocol ShortcutService {
-    func registerDefaults() throws
+    func register(bindings: [ShortcutBinding], handler: @escaping @MainActor (ShortcutCommandID) -> Void) throws
     func unregisterAll() throws
 }
 
@@ -43,8 +44,152 @@ struct PreferenceKey<Value: Codable> {
 
 @MainActor
 struct NoOpShortcutService: ShortcutService {
-    func registerDefaults() throws {}
+    func register(bindings: [ShortcutBinding], handler: @escaping @MainActor (ShortcutCommandID) -> Void) throws {}
     func unregisterAll() throws {}
+}
+
+@MainActor
+final class AppKitShortcutService: ShortcutService {
+    private struct KeyChord: Hashable {
+        let key: ShortcutKey
+        let modifiers: ShortcutModifiers
+    }
+
+    private var commandByChord: [KeyChord: ShortcutCommandID] = [:]
+    private var handler: (@MainActor (ShortcutCommandID) -> Void)?
+    private var localMonitor: Any?
+    private var globalMonitor: Any?
+    private let logger = Logger(subsystem: "Pinnacle", category: "ShortcutService")
+
+    func register(bindings: [ShortcutBinding], handler: @escaping @MainActor (ShortcutCommandID) -> Void) throws {
+        try unregisterAll()
+
+        var mapped: [KeyChord: ShortcutCommandID] = [:]
+        for binding in bindings {
+            mapped[KeyChord(key: binding.key, modifiers: binding.modifiers)] = binding.commandID
+        }
+        commandByChord = mapped
+        self.handler = handler
+        installMonitors()
+    }
+
+    func unregisterAll() throws {
+        if let localMonitor {
+            NSEvent.removeMonitor(localMonitor)
+            self.localMonitor = nil
+        }
+        if let globalMonitor {
+            NSEvent.removeMonitor(globalMonitor)
+            self.globalMonitor = nil
+        }
+        commandByChord.removeAll()
+        handler = nil
+    }
+
+    private func installMonitors() {
+        guard localMonitor == nil, globalMonitor == nil else {
+            return
+        }
+
+        localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
+            guard let self else {
+                return event
+            }
+            return self.process(event) ? nil : event
+        }
+
+        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
+            Task { @MainActor in
+                _ = self?.process(event)
+            }
+        }
+    }
+
+    private func process(_ event: NSEvent) -> Bool {
+        guard let key = ShortcutKey(event: event) else {
+            return false
+        }
+
+        let modifiers = ShortcutModifiers(eventModifierFlags: event.modifierFlags)
+        guard let command = commandByChord[KeyChord(key: key, modifiers: modifiers)] else {
+            return false
+        }
+
+        logger.log("Shortcut triggered: \(command.rawValue, privacy: .public)")
+        handler?(command)
+        return true
+    }
+}
+
+private extension ShortcutModifiers {
+    init(eventModifierFlags flags: NSEvent.ModifierFlags) {
+        var mapped: ShortcutModifiers = []
+        if flags.contains(.control) {
+            mapped.insert(.control)
+        }
+        if flags.contains(.option) {
+            mapped.insert(.option)
+        }
+        if flags.contains(.shift) {
+            mapped.insert(.shift)
+        }
+        if flags.contains(.command) {
+            mapped.insert(.command)
+        }
+        self = mapped
+    }
+}
+
+private extension ShortcutKey {
+    static let deleteKeyCode: UInt16 = 0x33 // kVK_Delete in HIToolbox/Events.h
+
+    init?(event: NSEvent) {
+        switch event.keyCode {
+        case Self.deleteKeyCode:
+            self = .backspace
+            return
+        default:
+            break
+        }
+
+        let normalized = (event.charactersIgnoringModifiers ?? "").lowercased()
+        switch normalized {
+        case "a":
+            self = .a
+        case "r":
+            self = .r
+        case "p":
+            self = .p
+        case "1":
+            self = .one
+        case "2":
+            self = .two
+        case "3":
+            self = .three
+        case "4":
+            self = .four
+        case "5":
+            self = .five
+        case "6":
+            self = .six
+        case "e":
+            self = .e
+        case "z":
+            self = .z
+        case "c":
+            self = .c
+        case "[":
+            self = .leftBracket
+        case "]":
+            self = .rightBracket
+        case " ":
+            self = .space
+        case "\u{7f}":
+            self = .backspace
+        default:
+            return nil
+        }
+    }
 }
 
 @MainActor

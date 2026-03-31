@@ -45,6 +45,7 @@ struct PinnacleApp: App {
                 Divider()
 
                 Button("Quit Pinnacle") {
+                    store.invalidate()
                     NSApplication.shared.terminate(nil)
                 }
             }

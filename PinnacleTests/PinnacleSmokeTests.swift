@@ -108,15 +108,97 @@ final class PinnacleSmokeTests: XCTestCase {
         XCTAssertNotNil(harness.store.lastErrorMessage)
         XCTAssertEqual(harness.store.sessionMode, .idle)
     }
+
+    func testShortcutRegistrationUsesDefaultBindingsWhenStoredBindingsConflict() throws {
+        let defaults = UserDefaults(suiteName: suiteName) ?? .standard
+        let preferencesService = UserDefaultsPreferencesService(defaults: defaults)
+        let conflictingBindings = [
+            ShortcutBinding(commandID: .toggleAnnotation, key: .a, modifiers: [.control, .option]),
+            ShortcutBinding(commandID: .toggleRecording, key: .a, modifiers: [.control, .option])
+        ]
+        preferencesService.setValue(conflictingBindings, for: AppStore.shortcutBindingsPreferenceKey)
+
+        let shortcutService = SpyShortcutService()
+        let harness = makeStoreHarness(
+            shortcutService: shortcutService,
+            preferencesService: preferencesService
+        )
+        XCTAssertEqual(harness.store.sessionMode, .idle)
+
+        XCTAssertEqual(shortcutService.lastRegisteredBindings, ShortcutBinding.defaults)
+        XCTAssertEqual(
+            preferencesService.value(for: AppStore.shortcutBindingsPreferenceKey),
+            ShortcutBinding.defaults
+        )
+    }
+
+    func testShortcutRegistrationPreservesEmptyBindingsWhenNoConflicts() throws {
+        let defaults = UserDefaults(suiteName: suiteName) ?? .standard
+        let preferencesService = UserDefaultsPreferencesService(defaults: defaults)
+        preferencesService.setValue([], for: AppStore.shortcutBindingsPreferenceKey)
+
+        let shortcutService = SpyShortcutService()
+        _ = makeStoreHarness(
+            shortcutService: shortcutService,
+            preferencesService: preferencesService
+        )
+
+        XCTAssertEqual(shortcutService.lastRegisteredBindings, [])
+        XCTAssertEqual(preferencesService.value(for: AppStore.shortcutBindingsPreferenceKey), [])
+    }
+
+    func testShortcutCommandMappingTriggersStoreActions() throws {
+        let harness = makeStoreHarness()
+
+        harness.shortcutService.trigger(.toggleAnnotation)
+        XCTAssertEqual(harness.store.sessionMode, .annotating)
+
+        harness.shortcutService.trigger(.toggleRecording)
+        XCTAssertEqual(harness.store.sessionMode, .recordingAndAnnotating)
+
+        harness.shortcutService.trigger(.togglePauseRecording)
+        XCTAssertEqual(harness.store.sessionMode, .paused)
+
+        harness.shortcutService.trigger(.togglePauseRecording)
+        XCTAssertEqual(harness.store.sessionMode, .recordingAndAnnotating)
+
+        harness.shortcutService.trigger(.selectEraser)
+        XCTAssertEqual(harness.store.toolState.activeTool, .eraser)
+    }
+
+    func testStopRecordingFromPausedReturnsToIdleWhenPausedFromRecording() throws {
+        let harness = makeStoreHarness()
+        harness.store.send(.startRecording)
+        harness.store.send(.pauseRecording)
+
+        harness.store.send(.stopRecording)
+
+        XCTAssertEqual(harness.store.sessionMode, .idle)
+    }
+
+    func testStopRecordingFromPausedReturnsToAnnotatingWhenPausedFromRecordingAndAnnotating() throws {
+        let harness = makeStoreHarness()
+        harness.store.send(.toggleAnnotation)
+        harness.store.send(.startRecording)
+        harness.store.send(.pauseRecording)
+
+        harness.store.send(.stopRecording)
+
+        XCTAssertEqual(harness.store.sessionMode, .annotating)
+    }
 }
 
 @MainActor
-private func makeStoreHarness(shouldRecordingStartThrow: Bool = false) -> StoreHarness {
-    let shortcutService = NoOpShortcutService()
+private func makeStoreHarness(
+    shouldRecordingStartThrow: Bool = false,
+    shortcutService: SpyShortcutService = SpyShortcutService(),
+    preferencesService: UserDefaultsPreferencesService = UserDefaultsPreferencesService(
+        defaults: UserDefaults(suiteName: "PinnacleTests") ?? .standard
+    )
+) -> StoreHarness {
     let overlayService = SpyOverlayService()
     let recordingService = SpyRecordingService(shouldThrowOnStart: shouldRecordingStartThrow)
     let permissionService = NoOpPermissionService()
-    let preferencesService = UserDefaultsPreferencesService(defaults: UserDefaults(suiteName: "PinnacleTests") ?? .standard)
 
     let container = AppContainer(
         shortcutService: shortcutService,
@@ -128,6 +210,7 @@ private func makeStoreHarness(shouldRecordingStartThrow: Bool = false) -> StoreH
 
     return StoreHarness(
         store: AppStore(container: container),
+        shortcutService: shortcutService,
         overlayService: overlayService,
         recordingService: recordingService
     )
@@ -136,6 +219,7 @@ private func makeStoreHarness(shouldRecordingStartThrow: Bool = false) -> StoreH
 @MainActor
 private struct StoreHarness {
     let store: AppStore
+    let shortcutService: SpyShortcutService
     let overlayService: SpyOverlayService
     let recordingService: SpyRecordingService
 }
@@ -181,4 +265,24 @@ private final class SpyRecordingService: RecordingService {
 
 private enum RecordingStartError: Error {
     case failed
+}
+
+@MainActor
+private final class SpyShortcutService: ShortcutService {
+    private(set) var lastRegisteredBindings: [ShortcutBinding] = []
+    private var handler: (@MainActor (ShortcutCommandID) -> Void)?
+
+    func register(bindings: [ShortcutBinding], handler: @escaping @MainActor (ShortcutCommandID) -> Void) throws {
+        lastRegisteredBindings = bindings
+        self.handler = handler
+    }
+
+    func unregisterAll() throws {
+        handler = nil
+        lastRegisteredBindings = []
+    }
+
+    func trigger(_ command: ShortcutCommandID) {
+        handler?(command)
+    }
 }

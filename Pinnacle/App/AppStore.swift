@@ -8,11 +8,24 @@ enum CommandID: Equatable {
     case toggleRecording
     case pauseRecording
     case resumeRecording
+    case togglePauseRecording
     case selectTool(ToolKind)
+    case undo
+    case redo
+    case clearAll
+    case cycleColors
+    case increaseStroke
+    case decreaseStroke
+    case toggleRadialControl
 }
 
 @MainActor
 final class AppStore: ObservableObject {
+    static let shortcutBindingsPreferenceKey = PreferenceKey<[ShortcutBinding]>(
+        name: "preferences.shortcuts.bindings",
+        defaultValue: ShortcutBinding.defaults
+    )
+
     @Published private(set) var sessionMode: SessionMode = .idle
     @Published private(set) var toolState: ToolState = .default
     @Published private(set) var lastErrorMessage: String?
@@ -22,6 +35,15 @@ final class AppStore: ObservableObject {
 
     init(container: AppContainer) {
         self.container = container
+        configureShortcuts()
+    }
+
+    func invalidate() {
+        do {
+            try container.shortcutService.unregisterAll()
+        } catch {
+            lastErrorMessage = "Failed to unregister shortcuts: \(error.localizedDescription)"
+        }
     }
 
     var isAnnotating: Bool {
@@ -90,6 +112,12 @@ final class AppStore: ObservableObject {
             } else {
                 try startRecording()
             }
+        case .togglePauseRecording:
+            if sessionMode == .paused {
+                try reduce(.resumeRecording)
+            } else {
+                try reduce(.pauseRecording)
+            }
         case .pauseRecording:
             // TODO: Wire pauseRecording to concrete RecordingService in recording phase.
             guard sessionMode == .recording || sessionMode == .recordingAndAnnotating else { return }
@@ -102,6 +130,27 @@ final class AppStore: ObservableObject {
             modeBeforePause = nil
         case let .selectTool(tool):
             toolState.activeTool = tool
+        case .undo:
+            // TODO: Wire undo once command stack is introduced in Phase 4.
+            break
+        case .redo:
+            // TODO: Wire redo once command stack is introduced in Phase 4.
+            break
+        case .clearAll:
+            // TODO: Wire clear-all once renderer model is introduced in Phase 4.
+            break
+        case .cycleColors:
+            // TODO: Wire palette cycling in settings/rendering phase.
+            break
+        case .increaseStroke:
+            // TODO: Wire stroke width mutation in tool configuration flow.
+            break
+        case .decreaseStroke:
+            // TODO: Wire stroke width mutation in tool configuration flow.
+            break
+        case .toggleRadialControl:
+            // TODO: Wire radial control visibility in overlay phase.
+            break
         }
     }
 
@@ -121,14 +170,77 @@ final class AppStore: ObservableObject {
     private func stopRecording() throws {
         guard isRecording else { return }
         try container.recordingService.stopRecording()
-        modeBeforePause = nil
         switch sessionMode {
         case .recording:
+            modeBeforePause = nil
             sessionMode = .idle
         case .recordingAndAnnotating:
+            modeBeforePause = nil
             sessionMode = .annotating
-        case .idle, .annotating, .paused:
+        case .paused:
+            let pausedFromMode = modeBeforePause
+            modeBeforePause = nil
+            if pausedFromMode == .recordingAndAnnotating {
+                sessionMode = .annotating
+            } else {
+                sessionMode = .idle
+            }
+        case .idle, .annotating:
             break
+        }
+    }
+
+    private func configureShortcuts() {
+        let storedBindings = container.preferencesService.value(for: Self.shortcutBindingsPreferenceKey)
+        let resolvedBindings = ShortcutConflictValidator.resolvedBindings(storedBindings)
+
+        do {
+            try container.shortcutService.register(bindings: resolvedBindings) { [weak self] shortcutCommand in
+                guard let self else { return }
+                send(command(for: shortcutCommand))
+            }
+            container.preferencesService.setValue(resolvedBindings, for: Self.shortcutBindingsPreferenceKey)
+        } catch {
+            lastErrorMessage = "Failed to register shortcuts: \(error.localizedDescription)"
+        }
+    }
+
+    private func command(for shortcutCommand: ShortcutCommandID) -> CommandID {
+        switch shortcutCommand {
+        case .toggleAnnotation:
+            return .toggleAnnotation
+        case .toggleRecording:
+            return .toggleRecording
+        case .togglePauseRecording:
+            return .togglePauseRecording
+        case .selectPen:
+            return .selectTool(.pen)
+        case .selectHighlighter:
+            return .selectTool(.highlighter)
+        case .selectArrow:
+            return .selectTool(.arrow)
+        case .selectRectangle:
+            return .selectTool(.rectangle)
+        case .selectEllipse:
+            return .selectTool(.ellipse)
+        case .selectText:
+            return .selectTool(.text)
+        case .selectEraser:
+            return .selectTool(.eraser)
+        case .undo:
+            return .undo
+        case .redo:
+            return .redo
+        case .clearAll:
+            return .clearAll
+        case .cycleColors:
+            return .cycleColors
+        case .increaseStroke:
+            return .increaseStroke
+        case .decreaseStroke:
+            return .decreaseStroke
+        case .toggleRadialControl:
+            return .toggleRadialControl
         }
     }
 }
