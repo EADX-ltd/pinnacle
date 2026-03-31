@@ -75,6 +75,15 @@ This file is the execution board for implementation work. Use it with `docs/ARCH
 | P3-T03 | Implement pen renderer with vector path model | P3-T02 | `todo` | Pen strokes render smoothly and persist in scene |
 | P3-T04 | Add annotation HUD showing active tool/color | P1-T05 | `todo` | HUD updates instantly on tool change |
 | P3-T05 | Measure and record baseline draw latency | P3-T03 | `todo` | Latency report logged against <16ms target |
+| P3-T06 | Implement radial on-screen control shell (single-circle collapsed + expanded states) | P3-T01 | `todo` | Control appears as small collapsed circle by default, expands/collapses correctly, and remains draggable |
+| P3-T07 | Wire radial selections to tool/color/stroke commands | P3-T06, P1-T03 | `todo` | Radial picks immediately update active tool state and renderer behavior |
+| P3-T08 | Enforce pointer pass-through outside radial hit area | P3-T06, P3-T02 | `todo` | Drawing interactions are unaffected outside radial control bounds |
+| P3-T09 | Add radial usability checks (auto-hide, edge snap, no lag) | P3-T06, P3-T07 | `todo` | Manual checklist confirms non-blocking behavior and smooth interaction |
+| P3-T10 | Add radial quick actions (undo, redo, clear) | P4-T05, P4-T06, P3-T06 | `todo` | Quick actions execute through command dispatcher and reflect state immediately |
+| P3-T11 | Add hover tooltips on HUD/radial items with mapped key bindings | P2-T02, P3-T06 | `todo` | On hover, tooltip shows command label + current binding and updates after remap |
+| P3-T12 | Enforce annotation-mode visibility rules for radial control | P1-T02, P3-T06 | `todo` | Control appears/hides according to session mode contract without stale overlays |
+| P3-T13 | Implement hover-triggered expand and leave-triggered collapse delay | P3-T06 | `todo` | Hover expands reliably; pointer leave collapses after delay without flicker or accidental toggles |
+| P3-T14 | Implement click-to-pin expanded mode toggle | P3-T06, P3-T13 | `todo` | First click pins expanded state; second click unpins and restores hover-driven collapse |
 
 ### Phase 4: Tool Renderers and Undo/Redo
 | ID | Task | Depends On | Status | Acceptance Criteria |
@@ -114,6 +123,8 @@ This file is the execution board for implementation work. Use it with `docs/ARCH
 | P7-T03 | Build permissions panel with status and re-check actions | P6-T01 | `todo` | Permission states are visible and refreshable |
 | P7-T04 | Add settings reset-to-default behavior | P7-T01, P7-T02 | `todo` | Reset restores architecture defaults safely |
 | P7-T05 | Add UI tests/manual checklist for settings flows | P7-T01, P7-T02, P7-T03 | `todo` | Settings flows verified for happy/error paths |
+| P7-T06 | Add radial control preferences (enabled, collapsed size, hover-expand delay, auto-hide, default position, click-pin enabled) | P3-T06, P3-T13, P3-T14 | `todo` | Users can configure radial behavior from Settings |
+| P7-T07 | Add validation/tests for radial preferences persistence | P7-T06, P8-T01 | `todo` | Radial settings survive restart and invalid values are rejected |
 
 ### Phase 8: Persistence and Output Management
 | ID | Task | Depends On | Status | Acceptance Criteria |
@@ -129,7 +140,7 @@ This file is the execution board for implementation work. Use it with `docs/ARCH
 | ID | Task | Depends On | Status | Acceptance Criteria |
 |---|---|---|---|---|
 | P9-T01 | Finalize unit test suite for state and command routing | P1-T04, P2-T05, P4-T07, P8-T06 | `todo` | Core test suite is green and repeatable |
-| P9-T02 | Execute manual test matrix for permissions/displays/recording | P5-T05, P6-T06, P7-T05 | `todo` | Matrix completed and documented |
+| P9-T02 | Execute manual test matrix for permissions/displays/recording/radial UX | P5-T05, P6-T06, P7-T05, P3-T09, P3-T10, P3-T11, P3-T13, P3-T14 | `todo` | Matrix completed and documented |
 | P9-T03 | Run performance profiling against section 9 targets | P3-T05, P6-T03 | `todo` | Metrics captured and compared to targets |
 | P9-T04 | Resolve or log all release-blocking defects | P9-T01, P9-T02 | `todo` | No unresolved P0/P1 severity issues |
 | P9-T05 | Publish release readiness summary | P9-T01, P9-T02, P9-T03, P9-T04 | `todo` | Summary includes known limits and go/no-go |

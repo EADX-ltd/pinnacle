@@ -62,7 +62,30 @@ Out of scope for v1:
 ### 4.1 UI Layer (`SwiftUI`)
 - `MenuBarScene`: start/stop annotation, start/stop recording, quick tool select.
 - `SettingsScene`: shortcuts, colors, stroke widths, save location, behavior toggles.
-- `HUDOverlayView` (optional): small floating indicator for current tool/color.
+- `HUDOverlayView` (optional): small floating indicator for current tool/color with hover tooltip showing action name and key binding.
+- `RadialControlOverlay` (optional but recommended): compact/expandable on-screen tool wheel for tool, color, and stroke selection.
+
+### 4.8 Radial Control Purpose and UX Contract
+Purpose:
+- Provide an in-session command surface so users can annotate effectively without relying only on keyboard shortcuts.
+- Offer fast access to high-frequency actions: tool switch, color select, stroke size, undo/redo, clear.
+- Improve discoverability by exposing shortcut hints via hover tooltips.
+
+Non-goals:
+- Do not replace full settings/configuration UI.
+- Do not obstruct drawing input or recording content more than necessary.
+
+Behavior contract:
+- Available in annotation mode; toggleable by shortcut/menu.
+- Default state is a single small collapsed circle.
+- Expands automatically when pointer hovers the collapsed control hit area.
+- Collapses back to single-circle when pointer leaves the control after a short delay.
+- Clicking the collapsed or expanded control toggles `pinned expanded` mode on/off.
+- While pinned expanded is on, control stays expanded until clicked again.
+- Clicking again disables pinned expanded mode and returns to hover-driven expansion/collapse.
+- Draggable with edge snap and remembers last position.
+- Pass-through interaction outside control bounds.
+- Hovering an actionable item shows tooltip with command label and current key binding.
 
 ### 4.2 App State and Domain
 - `AppSessionState`: `idle`, `annotating`, `recording`, `recordingAndAnnotating`, `paused`.
@@ -162,6 +185,7 @@ Proposed defaults:
 | Cycle Colors | `Control + Option + C` |
 | Increase Stroke | `Control + Option + ]` |
 | Decrease Stroke | `Control + Option + [` |
+| Toggle Radial Control | `Control + Option + Space` |
 
 Implementation note:
 - Keep all shortcuts user-configurable in Settings.
@@ -222,6 +246,23 @@ struct ShortcutBinding: Codable {
 2. File storage returns output URL.
 3. Optional local notification with “Reveal in Finder”.
 4. Session returns to `idle` or `annotating` depending on prior mode.
+
+### 7.5 Use Radial On-Screen Control
+1. User toggles radial control via shortcut or menu command.
+2. Overlay shows collapsed single-circle control at last saved position.
+3. Pointer hover expands control into radial actions.
+4. User clicks control to pin expanded state (stays expanded).
+5. User picks tool/color/stroke or quick action (undo/redo/clear).
+6. Selection dispatches command updates to `AppStore` and active overlay renderer/command stack.
+7. User clicks control again to unpin and return to hover-driven collapse behavior.
+8. On pointer leave (when not pinned), control collapses after configured delay.
+
+### 7.6 Hover HUD/Radial Item For Shortcut Tooltip
+1. User hovers a HUD or radial item.
+2. Overlay resolves mapped command and current shortcut binding.
+3. Tooltip appears near pointer with command label and key binding (example: `Pen (Ctrl+Opt+1)`).
+4. Tooltip hides on pointer leave or action execution.
+5. Tooltip content refreshes immediately after shortcut remap changes.
 
 ## 8. Rendering Strategy
 - Store annotations as vector objects (`ShapeElement`, `TextElement`, `ArrowElement`).
@@ -385,6 +426,9 @@ Every implementation phase must satisfy all gates below before being marked comp
 - Recording files are produced reliably and saved in configured location.
 - Shortcuts and colors are configurable and persisted.
 - Permissions are handled with clear user guidance.
+- Optional radial on-screen control is usable, non-blocking, and configurable.
+- Hovering HUD/radial controls shows accurate key binding tooltips.
+- Radial control supports keyboard-light workflow for tool/color/stroke and quick actions.
 - All phase quality gates in section `11.3` are satisfied and documented.
 
 ## 13. Decision Log (Agent Must Update)
