@@ -63,7 +63,7 @@ Out of scope for v1:
 - `MenuBarScene`: start/stop annotation, start/stop recording, quick tool select.
 - `SettingsScene`: shortcuts, colors, stroke widths, save location, behavior toggles.
 - `HUDOverlayView` (optional): small floating indicator for current tool/color with hover tooltip showing action name and key binding.
-- `RadialControlOverlay` (optional but recommended): compact/expandable on-screen tool wheel for tool, color, and stroke selection.
+- `RadialControlOverlay` (optional but recommended): compact center circle that expands to an outer donut of tools, with secondary donut options per selected tool.
 
 ### 4.8 Radial Control Purpose and UX Contract
 Purpose:
@@ -78,11 +78,11 @@ Non-goals:
 Behavior contract:
 - Available in annotation mode; toggleable by shortcut/menu.
 - Default state is a single small collapsed circle.
-- Expands automatically when pointer hovers the collapsed control hit area.
-- Collapses back to single-circle when pointer leaves the control after a short delay.
-- Clicking the collapsed or expanded control toggles `pinned expanded` mode on/off.
-- While pinned expanded is on, control stays expanded until clicked again.
-- Clicking again disables pinned expanded mode and returns to hover-driven expansion/collapse.
+- Clicking the center circle activates control.
+- Activated control expands tool actions into an outer donut ring around the center circle.
+- Clicking a tool expands a secondary donut ring with options for that tool.
+- Control deactivates 5 seconds after losing focus (pointer leaves control and no interaction continues).
+- On deactivation, control collapses back to the single small circle.
 - Draggable with edge snap and remembers last position.
 - Pass-through interaction outside control bounds.
 - Hovering an actionable item shows tooltip with command label and current key binding.
@@ -250,12 +250,12 @@ struct ShortcutBinding: Codable {
 ### 7.5 Use Radial On-Screen Control
 1. User toggles radial control via shortcut or menu command.
 2. Overlay shows collapsed single-circle control at last saved position.
-3. Pointer hover expands control into radial actions.
-4. User clicks control to pin expanded state (stays expanded).
-5. User picks tool/color/stroke or quick action (undo/redo/clear).
+3. Clicking the circle activates control and expands an outer donut of tools.
+4. Clicking a tool expands a second donut with tool-specific options.
+5. User picks tool/color/stroke or quick action (undo/redo/clear) from first or second donut.
 6. Selection dispatches command updates to `AppStore` and active overlay renderer/command stack.
-7. User clicks control again to unpin and return to hover-driven collapse behavior.
-8. On pointer leave (when not pinned), control collapses after configured delay.
+7. When focus is lost, a 5-second inactivity timer starts.
+8. If no new interaction occurs before timeout, control deactivates and collapses to the single-circle state.
 
 ### 7.6 Hover HUD/Radial Item For Shortcut Tooltip
 1. User hovers a HUD or radial item.
