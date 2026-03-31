@@ -29,6 +29,7 @@ struct PinnacleApp: App {
                 Button(store.isAnnotating ? "Stop Annotation" : "Start Annotation") {
                     store.send(.toggleAnnotation)
                 }
+                .disabled(!store.canToggleAnnotation)
 
                 Button(store.isRecording ? "Stop Recording" : "Start Recording") {
                     store.send(.toggleRecording)
@@ -56,5 +57,11 @@ struct PinnacleApp: App {
         Settings {
             SettingsView()
         }
+
+#if DEBUG
+        WindowGroup("Pinnacle Debug") {
+            ContentView(container: .live)
+        }
+#endif
     }
 }

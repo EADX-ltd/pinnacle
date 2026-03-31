@@ -28,6 +28,10 @@ final class AppStore: ObservableObject {
         sessionMode == .annotating || sessionMode == .recordingAndAnnotating
     }
 
+    var canToggleAnnotation: Bool {
+        sessionMode != .paused
+    }
+
     var isRecording: Bool {
         sessionMode == .recording || sessionMode == .recordingAndAnnotating || sessionMode == .paused
     }
