@@ -41,6 +41,10 @@ These instructions apply to the entire repository.
 - Keep these instructions aligned with the existing `CLAUDE.md` project context.
 - If additional modules or targets are added later, extend this file with target-specific guidance.
 - Architecture and rollout plan is defined in `docs/ARCHITECTURE.md`.
+- Concrete task board and status tracking live in `docs/IMPLEMENTATION_TASKS.md`.
 - When implementing features, execute phases from section `11` in order.
 - After each phase, update the checklist in section `11.1` and the decision log in section `13`.
 - Enforce mandatory quality gates defined in `docs/ARCHITECTURE.md` section `11.3`.
+- Before coding, set exactly one task to `in_progress` in `docs/IMPLEMENTATION_TASKS.md`.
+- After coding, mark the task `done` or `blocked` and update `Current Execution State`, `Execution Log`, and `Blockers Log` (if needed).
+- Do not keep more than one `in_progress` task in the task board.

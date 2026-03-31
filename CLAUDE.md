@@ -35,6 +35,8 @@ Open `Pinnacle.xcodeproj` in Xcode and run with ⌘R.
 
 ## Architecture Blueprint
 - Implementation architecture lives in `docs/ARCHITECTURE.md`.
+- Concrete execution tasks live in `docs/IMPLEMENTATION_TASKS.md`.
 - Follow phased rollout in section `11. AI Agent Implementation Plan`.
 - Keep section `13. Decision Log` updated after each completed phase.
 - Apply mandatory quality gates in section `11.3`.
+- Keep task status current in `docs/IMPLEMENTATION_TASKS.md` (`todo`, `in_progress`, `done`, `blocked`) with exactly one `in_progress`.

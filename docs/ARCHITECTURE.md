@@ -243,6 +243,7 @@ struct ShortcutBinding: Codable {
 ## 11. AI Agent Implementation Plan
 
 This section is the executable roadmap. The implementing AI agent must complete phases in order, then update phase status and decision notes after each phase.
+The concrete, task-level execution board is `docs/IMPLEMENTATION_TASKS.md` and must be kept current during implementation.
 
 ### 11.1 Phase Checklist
 - [ ] Phase 0: Project scaffolding and protocols
@@ -255,6 +256,10 @@ This section is the executable roadmap. The implementing AI agent must complete 
 - [ ] Phase 7: Settings UI for shortcuts/colors
 - [ ] Phase 8: Persistence and output management
 - [ ] Phase 9: Stabilization, profiling, test pass
+
+Tracking rule:
+- Use `docs/IMPLEMENTATION_TASKS.md` for day-to-day status updates.
+- Keep exactly one task marked `in_progress` at any given time.
 
 ### 11.2 Detailed Phases
 
