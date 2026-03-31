@@ -86,6 +86,7 @@ final class PinnacleSmokeTests: XCTestCase {
 
         harness.store.send(.stopRecording)
         XCTAssertEqual(harness.store.sessionMode, .annotating)
+        XCTAssertEqual(harness.recordingService.stopCount, 1)
     }
 
     func testPauseAndResumeRecordingRestoresPreviousMode() throws {
@@ -147,6 +148,12 @@ final class PinnacleSmokeTests: XCTestCase {
         XCTAssertEqual(preferencesService.value(for: AppStore.shortcutBindingsPreferenceKey), [])
     }
 
+    func testShortcutRegistrationPublishesBindingsToOverlayService() throws {
+        let harness = makeStoreHarness()
+
+        XCTAssertEqual(harness.overlayService.lastShortcutBindings, ShortcutBinding.defaults)
+    }
+
     func testShortcutCommandMappingTriggersStoreActions() throws {
         let harness = makeStoreHarness()
 
@@ -185,6 +192,144 @@ final class PinnacleSmokeTests: XCTestCase {
         harness.store.send(.stopRecording)
 
         XCTAssertEqual(harness.store.sessionMode, .annotating)
+    }
+
+    func testToggleRadialControlUpdatesOverlayVisibility() throws {
+        let harness = makeStoreHarness()
+
+        XCTAssertEqual(harness.overlayService.lastRadialVisibleValue, true)
+
+        harness.store.send(.toggleRadialControl)
+        XCTAssertEqual(harness.overlayService.lastRadialVisibleValue, false)
+
+        harness.store.send(.toggleRadialControl)
+        XCTAssertEqual(harness.overlayService.lastRadialVisibleValue, true)
+    }
+
+    func testOverlayActionSelectToolRoutesBackToStore() throws {
+        let harness = makeStoreHarness()
+
+        harness.overlayService.trigger(.selectTool(.text))
+
+        XCTAssertEqual(harness.store.toolState.activeTool, .text)
+    }
+
+    func testUndoCommandRoutesToOverlayService() throws {
+        let harness = makeStoreHarness()
+
+        harness.store.send(.undo)
+
+        XCTAssertEqual(harness.overlayService.undoCount, 1)
+    }
+
+    func testRedoCommandRoutesToOverlayService() throws {
+        let harness = makeStoreHarness()
+
+        harness.store.send(.redo)
+
+        XCTAssertEqual(harness.overlayService.redoCount, 1)
+    }
+
+    func testClearAllCommandRoutesToOverlayServiceAsUndoable() throws {
+        let harness = makeStoreHarness()
+
+        harness.store.send(.clearAll)
+
+        XCTAssertEqual(harness.overlayService.clearAllInvocations, [true])
+    }
+
+    func testOverlayActionUndoRedoClearRoutesBackToStore() throws {
+        let harness = makeStoreHarness()
+
+        harness.overlayService.trigger(.undo)
+        harness.overlayService.trigger(.redo)
+        harness.overlayService.trigger(.clearAll)
+
+        XCTAssertEqual(harness.overlayService.undoCount, 1)
+        XCTAssertEqual(harness.overlayService.redoCount, 1)
+        XCTAssertEqual(harness.overlayService.clearAllInvocations, [true])
+    }
+
+    func testOverlaySceneModelUndoRedoSupportsMixedElementHistory() {
+        var scene = OverlaySceneModel()
+
+        let stroke = OverlaySceneElement(kind: .stroke(
+            points: [CGPoint(x: 10, y: 10), CGPoint(x: 20, y: 20)],
+            width: 4,
+            colorHexRGBA: "#FF3B30FF",
+            opacity: 1
+        ))
+        let rectangle = OverlaySceneElement(kind: .rectangle(
+            rect: CGRect(x: 40, y: 40, width: 100, height: 60),
+            width: 4,
+            colorHexRGBA: "#34C759FF",
+            opacity: 1
+        ))
+        let text = OverlaySceneElement(kind: .text(
+            text: "Title",
+            center: CGPoint(x: 150, y: 140),
+            fontSize: 24,
+            colorHexRGBA: "#FFFFFFFF",
+            opacity: 1
+        ))
+
+        scene.commit(stroke)
+        scene.commit(rectangle)
+        scene.commit(text)
+        XCTAssertEqual(scene.elements.map(\.id), [stroke.id, rectangle.id, text.id])
+
+        scene.undo()
+        XCTAssertEqual(scene.elements.map(\.id), [stroke.id, rectangle.id])
+
+        scene.undo()
+        XCTAssertEqual(scene.elements.map(\.id), [stroke.id])
+
+        scene.redo()
+        XCTAssertEqual(scene.elements.map(\.id), [stroke.id, rectangle.id])
+
+        scene.redo()
+        XCTAssertEqual(scene.elements.map(\.id), [stroke.id, rectangle.id, text.id])
+    }
+
+    func testOverlaySceneModelClearAllIsUndoable() {
+        var scene = OverlaySceneModel()
+        let arrow = OverlaySceneElement(kind: .arrow(
+            start: CGPoint(x: 20, y: 20),
+            end: CGPoint(x: 80, y: 80),
+            width: 4,
+            colorHexRGBA: "#0A84FFFF",
+            opacity: 1
+        ))
+        scene.commit(arrow)
+        XCTAssertEqual(scene.elements.count, 1)
+
+        scene.clearAll(allowUndo: true)
+        XCTAssertTrue(scene.elements.isEmpty)
+
+        scene.undo()
+        XCTAssertEqual(scene.elements.map(\.id), [arrow.id])
+    }
+
+    func testOverlaySceneModelEraserRemovesTopmostHitElement() {
+        var scene = OverlaySceneModel()
+        let lower = OverlaySceneElement(kind: .rectangle(
+            rect: CGRect(x: 10, y: 10, width: 80, height: 80),
+            width: 4,
+            colorHexRGBA: "#34C759FF",
+            opacity: 1
+        ))
+        let upper = OverlaySceneElement(kind: .ellipse(
+            rect: CGRect(x: 20, y: 20, width: 80, height: 80),
+            width: 4,
+            colorHexRGBA: "#AF52DEFF",
+            opacity: 1
+        ))
+        scene.commit(lower)
+        scene.commit(upper)
+
+        let removed = scene.eraseTopmostElement(at: CGPoint(x: 40, y: 40))
+        XCTAssertTrue(removed)
+        XCTAssertEqual(scene.elements.map(\.id), [lower.id])
     }
 }
 
@@ -228,6 +373,13 @@ private struct StoreHarness {
 private final class SpyOverlayService: OverlayService {
     private(set) var startCount = 0
     private(set) var stopCount = 0
+    private(set) var updatedToolState: ToolState?
+    private(set) var undoCount = 0
+    private(set) var redoCount = 0
+    private(set) var clearAllInvocations: [Bool] = []
+    private(set) var lastRadialVisibleValue = true
+    private(set) var lastShortcutBindings: [ShortcutBinding] = []
+    private var commandHandler: (@MainActor (OverlayAction) -> Void)?
 
     func startOverlay() {
         startCount += 1
@@ -235,6 +387,38 @@ private final class SpyOverlayService: OverlayService {
 
     func stopOverlay() {
         stopCount += 1
+    }
+
+    func update(toolState: ToolState) {
+        updatedToolState = toolState
+    }
+
+    func undoLastChange() {
+        undoCount += 1
+    }
+
+    func redoLastChange() {
+        redoCount += 1
+    }
+
+    func clearAll(allowUndo: Bool) {
+        clearAllInvocations.append(allowUndo)
+    }
+
+    func setRadialControlVisible(_ isVisible: Bool) {
+        lastRadialVisibleValue = isVisible
+    }
+
+    func setShortcutBindings(_ bindings: [ShortcutBinding]) {
+        lastShortcutBindings = bindings
+    }
+
+    func setCommandHandler(_ handler: @escaping @MainActor (OverlayAction) -> Void) {
+        commandHandler = handler
+    }
+
+    func trigger(_ action: OverlayAction) {
+        commandHandler?(action)
     }
 }
 

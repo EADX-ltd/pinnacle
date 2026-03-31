@@ -32,9 +32,11 @@ final class AppStore: ObservableObject {
 
     private let container: AppContainer
     private var modeBeforePause: SessionMode?
+    private var isRadialControlVisible = true
 
     init(container: AppContainer) {
         self.container = container
+        configureOverlay()
         configureShortcuts()
     }
 
@@ -130,15 +132,13 @@ final class AppStore: ObservableObject {
             modeBeforePause = nil
         case let .selectTool(tool):
             toolState.activeTool = tool
+            container.overlayService.update(toolState: toolState)
         case .undo:
-            // TODO: Wire undo once command stack is introduced in Phase 4.
-            break
+            container.overlayService.undoLastChange()
         case .redo:
-            // TODO: Wire redo once command stack is introduced in Phase 4.
-            break
+            container.overlayService.redoLastChange()
         case .clearAll:
-            // TODO: Wire clear-all once renderer model is introduced in Phase 4.
-            break
+            container.overlayService.clearAll(allowUndo: true)
         case .cycleColors:
             // TODO: Wire palette cycling in settings/rendering phase.
             break
@@ -149,8 +149,8 @@ final class AppStore: ObservableObject {
             // TODO: Wire stroke width mutation in tool configuration flow.
             break
         case .toggleRadialControl:
-            // TODO: Wire radial control visibility in overlay phase.
-            break
+            isRadialControlVisible.toggle()
+            container.overlayService.setRadialControlVisible(isRadialControlVisible)
         }
     }
 
@@ -200,8 +200,33 @@ final class AppStore: ObservableObject {
                 send(command(for: shortcutCommand))
             }
             container.preferencesService.setValue(resolvedBindings, for: Self.shortcutBindingsPreferenceKey)
+            container.overlayService.setShortcutBindings(resolvedBindings)
         } catch {
             lastErrorMessage = "Failed to register shortcuts: \(error.localizedDescription)"
+        }
+    }
+
+    private func configureOverlay() {
+        container.overlayService.update(toolState: toolState)
+        container.overlayService.setRadialControlVisible(isRadialControlVisible)
+        container.overlayService.setCommandHandler { [weak self] action in
+            guard let self else { return }
+            switch action {
+            case let .selectTool(tool):
+                send(.selectTool(tool))
+            case .undo:
+                send(.undo)
+            case .redo:
+                send(.redo)
+            case .clearAll:
+                send(.clearAll)
+            case .cycleColors:
+                send(.cycleColors)
+            case .increaseStroke:
+                send(.increaseStroke)
+            case .decreaseStroke:
+                send(.decreaseStroke)
+            }
         }
     }
 

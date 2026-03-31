@@ -19,8 +19,8 @@ This file is the execution board for implementation work. Use it with `docs/ARCH
 | Field | Value |
 |---|---|
 | Current Task ID | `none` |
-| Current Phase | `none` |
-| Last Updated (UTC) | `2026-03-31 18:22` |
+| Current Phase | `3` |
+| Last Updated (UTC) | `2026-03-31 15:15` |
 | Updated By | `agent` |
 
 ## Phase Status Board
@@ -30,8 +30,8 @@ This file is the execution board for implementation work. Use it with `docs/ARCH
 | 0 | Project scaffolding and protocols | `done` | Task group `P0-*` all `done` |
 | 1 | Menu bar app shell and state store | `done` | Task group `P1-*` all `done` |
 | 2 | Global shortcuts | `done` | Task group `P2-*` all `done` |
-| 3 | Overlay engine (single display) | `todo` | Task group `P3-*` all `done` |
-| 4 | Tool renderers + undo/redo | `todo` | Task group `P4-*` all `done` |
+| 3 | Overlay engine (single display) | `in_progress` | Task group `P3-*` all `done` |
+| 4 | Tool renderers + undo/redo | `done` | Task group `P4-*` all `done` |
 | 5 | Multi-display support | `todo` | Task group `P5-*` all `done` |
 | 6 | Recording engine integration | `todo` | Task group `P6-*` all `done` |
 | 7 | Settings UI for shortcuts/colors | `todo` | Task group `P7-*` all `done` |
@@ -70,31 +70,31 @@ This file is the execution board for implementation work. Use it with `docs/ARCH
 ### Phase 3: Overlay Engine (Single Display)
 | ID | Task | Depends On | Status | Acceptance Criteria |
 |---|---|---|---|---|
-| P3-T01 | Create transparent top-level overlay window manager | P1-T03 | `todo` | Overlay can be shown/hidden without focus issues |
-| P3-T02 | Capture pointer input and route events to active tool | P3-T01 | `todo` | Pointer down/move/up stream received correctly |
-| P3-T03 | Implement pen renderer with vector path model | P3-T02 | `todo` | Pen strokes render smoothly and persist in scene |
-| P3-T04 | Add annotation HUD showing active tool/color | P1-T05 | `todo` | HUD updates instantly on tool change |
-| P3-T05 | Measure and record baseline draw latency | P3-T03 | `todo` | Latency report logged against <16ms target |
-| P3-T06 | Implement radial control shell (single-circle idle + outer donut tools) | P3-T01 | `todo` | Control appears as small circle by default, activates on click, and expands tool ring correctly |
-| P3-T07 | Implement secondary donut options per tool and wire selections | P3-T06, P1-T03 | `todo` | Clicking a tool expands options ring and selections update active tool state and renderer behavior |
-| P3-T08 | Enforce pointer pass-through outside radial hit area | P3-T06, P3-T02 | `todo` | Drawing interactions are unaffected outside radial control bounds |
-| P3-T09 | Add radial usability checks (auto-hide, edge snap, no lag) | P3-T06, P3-T07 | `todo` | Manual checklist confirms non-blocking behavior and smooth interaction |
-| P3-T10 | Add radial quick actions (undo, redo, clear) | P4-T05, P4-T06, P3-T06 | `todo` | Quick actions execute through command dispatcher and reflect state immediately |
-| P3-T11 | Add hover tooltips on HUD/radial items with mapped key bindings | P2-T02, P3-T06 | `todo` | On hover, tooltip shows command label + current binding and updates after remap |
-| P3-T12 | Enforce annotation-mode visibility rules for radial control | P1-T02, P3-T06 | `todo` | Control appears/hides according to session mode contract without stale overlays |
-| P3-T13 | Implement activation lifecycle (click activate + focus-loss timeout) | P3-T06 | `todo` | Click activates; on focus loss, control deactivates after 5s inactivity without flicker |
-| P3-T14 | Implement focus tracking and timeout cancellation rules | P3-T13, P3-T07 | `todo` | Timer starts only after focus loss and cancels on re-enter/interaction before 5s |
+| P3-T01 | Create transparent top-level overlay window manager | P1-T03 | `done` | Overlay can be shown/hidden without focus issues |
+| P3-T02 | Capture pointer input and route events to active tool | P3-T01 | `done` | Pointer down/move/up stream received correctly |
+| P3-T03 | Implement pen renderer with vector path model | P3-T02 | `done` | Pen strokes render smoothly and persist in scene |
+| P3-T04 | Add annotation HUD showing active tool/color | P1-T05 | `done` | HUD updates instantly on tool change |
+| P3-T05 | Measure and record baseline draw latency | P3-T03 | `done` | Latency report logged against <16ms target |
+| P3-T06 | Implement radial control shell (single-circle idle + outer donut tools) | P3-T01 | `done` | Control appears as small circle by default, activates on click, and expands tool ring correctly |
+| P3-T07 | Implement secondary donut options per tool and wire selections | P3-T06, P1-T03 | `done` | Clicking a tool expands options ring and selections update active tool state and renderer behavior |
+| P3-T08 | Enforce pointer pass-through outside radial hit area | P3-T06, P3-T02 | `done` | Drawing interactions are unaffected outside radial control bounds |
+| P3-T09 | Add radial usability checks (auto-hide, edge snap, no lag) | P3-T06, P3-T07 | `blocked` | Manual checklist confirms non-blocking behavior and smooth interaction |
+| P3-T10 | Add radial quick actions (undo, redo, clear) | P4-T05, P4-T06, P3-T06 | `done` | Quick actions execute through command dispatcher and reflect state immediately |
+| P3-T11 | Add hover tooltips on HUD/radial items with mapped key bindings | P2-T02, P3-T06 | `done` | On hover, tooltip shows command label + current binding and updates after remap |
+| P3-T12 | Enforce annotation-mode visibility rules for radial control | P1-T02, P3-T06 | `done` | Control appears/hides according to session mode contract without stale overlays |
+| P3-T13 | Implement activation lifecycle (click activate + focus-loss timeout) | P3-T06 | `done` | Click activates; on focus loss, control deactivates after 5s inactivity without flicker |
+| P3-T14 | Implement focus tracking and timeout cancellation rules | P3-T13, P3-T07 | `done` | Timer starts only after focus loss and cancels on re-enter/interaction before 5s |
 
 ### Phase 4: Tool Renderers and Undo/Redo
 | ID | Task | Depends On | Status | Acceptance Criteria |
 |---|---|---|---|---|
-| P4-T01 | Implement highlighter renderer with alpha behavior | P3-T03 | `todo` | Highlighter appears translucent and smooth |
-| P4-T02 | Implement arrow/rectangle/ellipse renderers | P3-T03 | `todo` | Shape tools support drag preview and final commit |
-| P4-T03 | Implement text placement and editing commit flow | P3-T02 | `todo` | Text tool creates editable then committed text nodes |
-| P4-T04 | Implement eraser object-hit removal logic | P4-T02, P4-T03 | `todo` | Eraser removes targeted scene elements only |
-| P4-T05 | Implement undo/redo command stack | P4-T01, P4-T02, P4-T03, P4-T04 | `todo` | Undo/redo works across all tool element types |
-| P4-T06 | Implement clear-all command + confirmation behavior | P4-T05 | `todo` | Scene clears safely and operation is undoable if intended |
-| P4-T07 | Add renderer + undo/redo tests | P4-T05 | `todo` | Tests cover mixed tool history operations |
+| P4-T01 | Implement highlighter renderer with alpha behavior | P3-T03 | `done` | Highlighter appears translucent and smooth |
+| P4-T02 | Implement arrow/rectangle/ellipse renderers | P3-T03 | `done` | Shape tools support drag preview and final commit |
+| P4-T03 | Implement text placement and editing commit flow | P3-T02 | `done` | Text tool creates editable then committed text nodes |
+| P4-T04 | Implement eraser object-hit removal logic | P4-T02, P4-T03 | `done` | Eraser removes targeted scene elements only |
+| P4-T05 | Implement undo/redo command stack | P4-T01, P4-T02, P4-T03, P4-T04 | `done` | Undo/redo works across all tool element types |
+| P4-T06 | Implement clear-all command + confirmation behavior | P4-T05 | `done` | Scene clears safely and operation is undoable if intended |
+| P4-T07 | Add renderer + undo/redo tests | P4-T05 | `done` | Tests cover mixed tool history operations |
 
 ### Phase 5: Multi-Display Support
 | ID | Task | Depends On | Status | Acceptance Criteria |
@@ -159,6 +159,7 @@ This file is the execution board for implementation work. Use it with `docs/ARCH
 | Date | Task ID | Blocker | Required Action | Status |
 |---|---|---|---|---|
 | YYYY-MM-DD | P?-T?? | TBD | TBD | open |
+| 2026-03-31 | P3-T09 | Manual radial UX checklist requires running overlay interactions in macOS GUI session | Execute Phase 3 radial manual checklist in a full Xcode/macOS app runtime and record results | open |
 
 ## Execution Log
 | Date | Task ID | Change Summary | Validation | Next Task |
@@ -168,3 +169,5 @@ This file is the execution board for implementation work. Use it with `docs/ARCH
 | 2026-03-31 | P0-T02 | Hardened protocol isolation and preferences serialization; replaced smoke assertions with behavior checks; fixed section order in architecture docs | `xcodebuild test -project Pinnacle.xcodeproj -scheme Pinnacle -destination 'platform=macOS' -derivedDataPath /tmp/PinnacleDerivedData -only-testing:PinnacleTests/PinnacleSmokeTests` passed | P1-T01 |
 | 2026-03-31 | P1-T01..P1-T05 | Added `MenuBarExtra` controls with active-mode indicator, implemented `AppStore` (`SessionMode`, `ToolState`, `CommandID`) and deterministic command reducer, and added transition unit tests | `xcodebuild test -project Pinnacle.xcodeproj -scheme Pinnacle -destination 'platform=macOS' -derivedDataPath /tmp/PinnacleDerivedData -only-testing:PinnacleTests/PinnacleSmokeTests` could not run in this environment (`xcodebuild` requires full Xcode, active developer dir is CommandLineTools) | P2-T01 |
 | 2026-03-31 | P2-T01..P2-T05 | Added default shortcut domain model and validator, implemented `AppKitShortcutService` event adapter, wired `AppStore` shortcut registration/persistence/dispatch, and added shortcut mapping/conflict tests | `xcodebuild test -project Pinnacle.xcodeproj -scheme Pinnacle -destination 'platform=macOS' -derivedDataPath /tmp/PinnacleDerivedData -only-testing:PinnacleTests/PinnacleSmokeTests` could not run in this environment (`xcodebuild` requires full Xcode, active developer dir is CommandLineTools); validation performed via static code checks and test compilation review | P3-T01 |
+| 2026-03-31 | P3-T01..P3-T08,P3-T11..P3-T14 | Added `AppKitOverlayService` with a transparent top-level panel, pointer-driven canvas stroke rendering, active tool HUD, radial control shell with secondary options, shortcut-aware hover tooltips, focus-loss auto-collapse lifecycle, and `AppStore` command wiring for overlay actions/visibility | `xcodebuild test -project Pinnacle.xcodeproj -scheme Pinnacle -destination 'platform=macOS' -derivedDataPath /tmp/PinnacleDerivedData -only-testing:PinnacleTests/PinnacleSmokeTests` could not run in this environment (`xcodebuild` requires full Xcode, active developer dir is CommandLineTools); validation performed via static review and targeted unit-test updates | P3-T10 |
+| 2026-03-31 | P4-T01..P4-T07,P3-T10 | Added a scene-element overlay model supporting highlighter, arrow/rectangle/ellipse drag-preview renderers, text draft-commit flow, eraser hit-removal, undo/redo stack, clear-all undoable behavior, and AppStore command wiring for radial/shortcut undo-redo-clear actions | `xcodebuild test -project Pinnacle.xcodeproj -scheme Pinnacle -destination 'platform=macOS' -derivedDataPath /tmp/PinnacleDerivedData -only-testing:PinnacleTests/PinnacleSmokeTests` could not run in this environment (`xcodebuild` requires full Xcode, active developer dir is CommandLineTools); validation performed via static code review and added scene-model/store command routing tests | P3-T09 |

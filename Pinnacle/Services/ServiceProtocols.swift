@@ -12,6 +12,23 @@ protocol ShortcutService {
 protocol OverlayService {
     func startOverlay()
     func stopOverlay()
+    func update(toolState: ToolState)
+    func undoLastChange()
+    func redoLastChange()
+    func clearAll(allowUndo: Bool)
+    func setRadialControlVisible(_ isVisible: Bool)
+    func setShortcutBindings(_ bindings: [ShortcutBinding])
+    func setCommandHandler(_ handler: @escaping @MainActor (OverlayAction) -> Void)
+}
+
+enum OverlayAction: Equatable {
+    case selectTool(ToolKind)
+    case undo
+    case redo
+    case clearAll
+    case cycleColors
+    case increaseStroke
+    case decreaseStroke
 }
 
 @MainActor
@@ -99,6 +116,8 @@ final class AppKitShortcutService: ShortcutService {
         }
 
         globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
+            // Global monitor callback is non-isolated, so hop to MainActor before touching actor-isolated state.
+            // This keeps actor safety explicit even though it introduces a small async ordering difference vs local monitor.
             Task { @MainActor in
                 _ = self?.process(event)
             }
@@ -196,6 +215,13 @@ private extension ShortcutKey {
 struct NoOpOverlayService: OverlayService {
     func startOverlay() {}
     func stopOverlay() {}
+    func update(toolState: ToolState) {}
+    func undoLastChange() {}
+    func redoLastChange() {}
+    func clearAll(allowUndo: Bool) {}
+    func setRadialControlVisible(_ isVisible: Bool) {}
+    func setShortcutBindings(_ bindings: [ShortcutBinding]) {}
+    func setCommandHandler(_ handler: @escaping @MainActor (OverlayAction) -> Void) {}
 }
 
 @MainActor
