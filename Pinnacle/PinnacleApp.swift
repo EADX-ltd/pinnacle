@@ -9,9 +9,12 @@ import SwiftUI
 
 @main
 struct PinnacleApp: App {
+    @MainActor
+    private let container = AppContainer.live
+
     var body: some Scene {
         WindowGroup {
-            ContentView()
+            ContentView(container: container)
         }
     }
 }

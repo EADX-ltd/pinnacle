@@ -7,48 +7,63 @@
 	objects = {
 
 /* Begin PBXFileReference section */
-		EFFD706D2F7BABDC009F1722 /* Pinnacle.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Pinnacle.app; sourceTree = BUILT_PRODUCTS_DIR; };
+                EFFD706D2F7BABDC009F1722 /* Pinnacle.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Pinnacle.app; sourceTree = BUILT_PRODUCTS_DIR; };
+                EFF100012F7C2D55009F1722 /* PinnacleTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = PinnacleTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
-		EFFD706F2F7BABDC009F1722 /* Pinnacle */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = Pinnacle;
-			sourceTree = "<group>";
-		};
+                EFFD706F2F7BABDC009F1722 /* Pinnacle */ = {
+                        isa = PBXFileSystemSynchronizedRootGroup;
+                        path = Pinnacle;
+                        sourceTree = "<group>";
+                };
+                EFF100022F7C2D55009F1722 /* PinnacleTests */ = {
+                        isa = PBXFileSystemSynchronizedRootGroup;
+                        path = PinnacleTests;
+                        sourceTree = "<group>";
+                };
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
-		EFFD706A2F7BABDC009F1722 /* Frameworks */ = {
-			isa = PBXFrameworksBuildPhase;
+                EFFD706A2F7BABDC009F1722 /* Frameworks */ = {
+                        isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
+                        files = (
+                        );
+                        runOnlyForDeploymentPostprocessing = 0;
+                };
+                EFF100032F7C2D55009F1722 /* Frameworks */ = {
+                        isa = PBXFrameworksBuildPhase;
+                        buildActionMask = 2147483647;
+                        files = (
+                        );
+                        runOnlyForDeploymentPostprocessing = 0;
+                };
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
-		EFFD70642F7BABDC009F1722 = {
-			isa = PBXGroup;
-			children = (
-				EFFD706F2F7BABDC009F1722 /* Pinnacle */,
-				EFFD706E2F7BABDC009F1722 /* Products */,
-			);
-			sourceTree = "<group>";
-		};
-		EFFD706E2F7BABDC009F1722 /* Products */ = {
-			isa = PBXGroup;
-			children = (
-				EFFD706D2F7BABDC009F1722 /* Pinnacle.app */,
-			);
-			name = Products;
-			sourceTree = "<group>";
-		};
+                EFFD70642F7BABDC009F1722 = {
+                        isa = PBXGroup;
+                        children = (
+                                EFFD706F2F7BABDC009F1722 /* Pinnacle */,
+                                EFF100022F7C2D55009F1722 /* PinnacleTests */,
+                                EFFD706E2F7BABDC009F1722 /* Products */,
+                        );
+                        sourceTree = "<group>";
+                };
+                EFFD706E2F7BABDC009F1722 /* Products */ = {
+                        isa = PBXGroup;
+                        children = (
+                                EFFD706D2F7BABDC009F1722 /* Pinnacle.app */,
+                                EFF100012F7C2D55009F1722 /* PinnacleTests.xctest */,
+                        );
+                        name = Products;
+                        sourceTree = "<group>";
+                };
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
-		EFFD706C2F7BABDC009F1722 /* Pinnacle */ = {
+                EFFD706C2F7BABDC009F1722 /* Pinnacle */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = EFFD70782F7BABDD009F1722 /* Build configuration list for PBXNativeTarget "Pinnacle" */;
 			buildPhases = (
@@ -66,25 +81,62 @@
 			name = Pinnacle;
 			packageProductDependencies = (
 			);
-			productName = Pinnacle;
-			productReference = EFFD706D2F7BABDC009F1722 /* Pinnacle.app */;
-			productType = "com.apple.product-type.application";
-		};
+                        productName = Pinnacle;
+                        productReference = EFFD706D2F7BABDC009F1722 /* Pinnacle.app */;
+                        productType = "com.apple.product-type.application";
+                };
+                EFF100062F7C2D55009F1722 /* PinnacleTests */ = {
+                        isa = PBXNativeTarget;
+                        buildConfigurationList = EFF1000B2F7C2D55009F1722 /* Build configuration list for PBXNativeTarget "PinnacleTests" */;
+                        buildPhases = (
+                                EFF100042F7C2D55009F1722 /* Sources */,
+                                EFF100032F7C2D55009F1722 /* Frameworks */,
+                                EFF100052F7C2D55009F1722 /* Resources */,
+                        );
+                        buildRules = (
+                        );
+                        dependencies = (
+                                EFF100082F7C2D55009F1722 /* PBXTargetDependency */,
+                        );
+                        fileSystemSynchronizedGroups = (
+                                EFF100022F7C2D55009F1722 /* PinnacleTests */,
+                        );
+                        name = PinnacleTests;
+                        packageProductDependencies = (
+                        );
+                        productName = PinnacleTests;
+                        productReference = EFF100012F7C2D55009F1722 /* PinnacleTests.xctest */;
+                        productType = "com.apple.product-type.bundle.unit-test";
+                };
 /* End PBXNativeTarget section */
 
+/* Begin PBXContainerItemProxy section */
+                EFF100072F7C2D55009F1722 /* PBXContainerItemProxy */ = {
+                        isa = PBXContainerItemProxy;
+                        containerPortal = EFFD70652F7BABDC009F1722 /* Project object */;
+                        proxyType = 1;
+                        remoteGlobalIDString = EFFD706C2F7BABDC009F1722;
+                        remoteInfo = Pinnacle;
+                };
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXProject section */
-		EFFD70652F7BABDC009F1722 /* Project object */ = {
-			isa = PBXProject;
-			attributes = {
+                EFFD70652F7BABDC009F1722 /* Project object */ = {
+                        isa = PBXProject;
+                        attributes = {
 				BuildIndependentTargetsInParallel = 1;
 				LastSwiftUpdateCheck = 2640;
 				LastUpgradeCheck = 2640;
-				TargetAttributes = {
-					EFFD706C2F7BABDC009F1722 = {
-						CreatedOnToolsVersion = 26.4;
-					};
-				};
-			};
+                                TargetAttributes = {
+                                        EFFD706C2F7BABDC009F1722 = {
+                                                CreatedOnToolsVersion = 26.4;
+                                        };
+                                        EFF100062F7C2D55009F1722 = {
+                                                CreatedOnToolsVersion = 26.4;
+                                                TestTargetID = EFFD706C2F7BABDC009F1722;
+                                        };
+                                };
+                        };
 			buildConfigurationList = EFFD70682F7BABDC009F1722 /* Build configuration list for PBXProject "Pinnacle" */;
 			developmentRegion = en;
 			hasScannedForEncodings = 0;
@@ -98,31 +150,54 @@
 			productRefGroup = EFFD706E2F7BABDC009F1722 /* Products */;
 			projectDirPath = "";
 			projectRoot = "";
-			targets = (
-				EFFD706C2F7BABDC009F1722 /* Pinnacle */,
-			);
-		};
+                        targets = (
+                                EFFD706C2F7BABDC009F1722 /* Pinnacle */,
+                                EFF100062F7C2D55009F1722 /* PinnacleTests */,
+                        );
+                };
 /* End PBXProject section */
 
 /* Begin PBXResourcesBuildPhase section */
-		EFFD706B2F7BABDC009F1722 /* Resources */ = {
-			isa = PBXResourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
+                EFFD706B2F7BABDC009F1722 /* Resources */ = {
+                        isa = PBXResourcesBuildPhase;
+                        buildActionMask = 2147483647;
+                        files = (
+                        );
+                        runOnlyForDeploymentPostprocessing = 0;
+                };
+                EFF100052F7C2D55009F1722 /* Resources */ = {
+                        isa = PBXResourcesBuildPhase;
+                        buildActionMask = 2147483647;
+                        files = (
+                        );
+                        runOnlyForDeploymentPostprocessing = 0;
+                };
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
-		EFFD70692F7BABDC009F1722 /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
+                EFFD70692F7BABDC009F1722 /* Sources */ = {
+                        isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
-			files = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
+                        files = (
+                        );
+                        runOnlyForDeploymentPostprocessing = 0;
+                };
+                EFF100042F7C2D55009F1722 /* Sources */ = {
+                        isa = PBXSourcesBuildPhase;
+                        buildActionMask = 2147483647;
+                        files = (
+                        );
+                        runOnlyForDeploymentPostprocessing = 0;
+                };
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+                EFF100082F7C2D55009F1722 /* PBXTargetDependency */ = {
+                        isa = PBXTargetDependency;
+                        target = EFFD706C2F7BABDC009F1722 /* Pinnacle */;
+                        targetProxy = EFF100072F7C2D55009F1722 /* PBXContainerItemProxy */;
+                };
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		EFFD70762F7BABDD009F1722 /* Debug */ = {
@@ -273,9 +348,9 @@
 			};
 			name = Debug;
 		};
-		EFFD707A2F7BABDD009F1722 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
+                EFFD707A2F7BABDD009F1722 /* Release */ = {
+                        isa = XCBuildConfiguration;
+                        buildSettings = {
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_STYLE = Automatic;
@@ -300,9 +375,42 @@
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_UPCOMING_FEATURE_MEMBER_IMPORT_VISIBILITY = YES;
 				SWIFT_VERSION = 5.0;
-			};
-			name = Release;
-		};
+                        };
+                        name = Release;
+                };
+                EFF100092F7C2D55009F1722 /* Debug */ = {
+                        isa = XCBuildConfiguration;
+                        buildSettings = {
+                                BUNDLE_LOADER = "$(TEST_HOST)";
+                                CODE_SIGN_STYLE = Automatic;
+                                CURRENT_PROJECT_VERSION = 1;
+                                GENERATE_INFOPLIST_FILE = YES;
+                                MARKETING_VERSION = 1.0;
+                                PRODUCT_BUNDLE_IDENTIFIER = com.eadx.PinnacleTests;
+                                PRODUCT_NAME = "$(TARGET_NAME)";
+                                SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+                                SWIFT_EMIT_LOC_STRINGS = NO;
+                                SWIFT_VERSION = 5.0;
+                                TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Pinnacle.app/Contents/MacOS/Pinnacle";
+                            };
+                        name = Debug;
+                };
+                EFF1000A2F7C2D55009F1722 /* Release */ = {
+                        isa = XCBuildConfiguration;
+                        buildSettings = {
+                                BUNDLE_LOADER = "$(TEST_HOST)";
+                                CODE_SIGN_STYLE = Automatic;
+                                CURRENT_PROJECT_VERSION = 1;
+                                GENERATE_INFOPLIST_FILE = YES;
+                                MARKETING_VERSION = 1.0;
+                                PRODUCT_BUNDLE_IDENTIFIER = com.eadx.PinnacleTests;
+                                PRODUCT_NAME = "$(TARGET_NAME)";
+                                SWIFT_EMIT_LOC_STRINGS = NO;
+                                SWIFT_VERSION = 5.0;
+                                TEST_HOST = "$(BUILT_PRODUCTS_DIR)/Pinnacle.app/Contents/MacOS/Pinnacle";
+                            };
+                        name = Release;
+                };
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -315,15 +423,24 @@
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
 		};
-		EFFD70782F7BABDD009F1722 /* Build configuration list for PBXNativeTarget "Pinnacle" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				EFFD70792F7BABDD009F1722 /* Debug */,
-				EFFD707A2F7BABDD009F1722 /* Release */,
+                EFFD70782F7BABDD009F1722 /* Build configuration list for PBXNativeTarget "Pinnacle" */ = {
+                        isa = XCConfigurationList;
+                        buildConfigurations = (
+                                EFFD70792F7BABDD009F1722 /* Debug */,
+                                EFFD707A2F7BABDD009F1722 /* Release */,
 			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Release;
-		};
+                        defaultConfigurationIsVisible = 0;
+                        defaultConfigurationName = Release;
+                };
+                EFF1000B2F7C2D55009F1722 /* Build configuration list for PBXNativeTarget "PinnacleTests" */ = {
+                        isa = XCConfigurationList;
+                        buildConfigurations = (
+                                EFF100092F7C2D55009F1722 /* Debug */,
+                                EFF1000A2F7C2D55009F1722 /* Release */,
+                        );
+                        defaultConfigurationIsVisible = 0;
+                        defaultConfigurationName = Release;
+                };
 /* End XCConfigurationList section */
 	};
 	rootObject = EFFD70652F7BABDC009F1722 /* Project object */;

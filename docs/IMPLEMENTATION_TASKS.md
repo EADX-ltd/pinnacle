@@ -20,14 +20,14 @@ This file is the execution board for implementation work. Use it with `docs/ARCH
 |---|---|
 | Current Task ID | `none` |
 | Current Phase | `none` |
-| Last Updated (UTC) | `YYYY-MM-DD HH:MM` |
+| Last Updated (UTC) | `2026-03-31 14:06` |
 | Updated By | `agent` |
 
 ## Phase Status Board
 
 | Phase | Name | Status | Exit Criteria |
 |---|---|---|---|
-| 0 | Project scaffolding and protocols | `todo` | Task group `P0-*` all `done` |
+| 0 | Project scaffolding and protocols | `done` | Task group `P0-*` all `done` |
 | 1 | Menu bar app shell and state store | `todo` | Task group `P1-*` all `done` |
 | 2 | Global shortcuts | `todo` | Task group `P2-*` all `done` |
 | 3 | Overlay engine (single display) | `todo` | Task group `P3-*` all `done` |
@@ -43,11 +43,11 @@ This file is the execution board for implementation work. Use it with `docs/ARCH
 ### Phase 0: Project Scaffolding and Protocols
 | ID | Task | Depends On | Status | Acceptance Criteria |
 |---|---|---|---|---|
-| P0-T01 | Create source folders: `App`, `Domain`, `Services`, `Overlay`, `Recording`, `Settings` | none | `todo` | Folders exist and compile references resolve |
-| P0-T02 | Define protocol contracts: `ShortcutService`, `OverlayService`, `RecordingService`, `PermissionService`, `PreferencesService` | P0-T01 | `todo` | Protocols compile with clear method signatures |
-| P0-T03 | Implement DI container for protocol-backed services | P0-T02 | `todo` | App startup resolves service graph without crashes |
-| P0-T04 | Add base smoke test target wiring for domain/services | P0-T02 | `todo` | At least one passing smoke test in CI/local |
-| P0-T05 | Document module boundaries in code comments/readme header | P0-T01 | `todo` | Boundaries are explicit for future contributors |
+| P0-T01 | Create source folders: `App`, `Domain`, `Services`, `Overlay`, `Recording`, `Settings` | none | `done` | Folders exist and compile references resolve |
+| P0-T02 | Define protocol contracts: `ShortcutService`, `OverlayService`, `RecordingService`, `PermissionService`, `PreferencesService` | P0-T01 | `done` | Protocols compile with clear method signatures |
+| P0-T03 | Implement DI container for protocol-backed services | P0-T02 | `done` | App startup resolves service graph without crashes |
+| P0-T04 | Add base smoke test target wiring for domain/services | P0-T02 | `done` | At least one passing smoke test in CI/local |
+| P0-T05 | Document module boundaries in code comments/readme header | P0-T01 | `done` | Boundaries are explicit for future contributors |
 
 ### Phase 1: Menu Bar Shell and State Store
 | ID | Task | Depends On | Status | Acceptance Criteria |
@@ -164,3 +164,5 @@ This file is the execution board for implementation work. Use it with `docs/ARCH
 | Date | Task ID | Change Summary | Validation | Next Task |
 |---|---|---|---|---|
 | YYYY-MM-DD | P?-T?? | TBD | TBD | TBD |
+| 2026-03-31 | P0-T01..P0-T05 | Added module scaffolding, service protocols, DI container, and smoke test target/wiring | `xcodebuild test -project Pinnacle.xcodeproj -scheme Pinnacle -destination 'platform=macOS' -derivedDataPath /tmp/PinnacleDerivedData -only-testing:PinnacleTests/PinnacleSmokeTests` passed | P1-T01 |
+| 2026-03-31 | P0-T02 | Hardened protocol isolation and preferences serialization; replaced smoke assertions with behavior checks; fixed section order in architecture docs | `xcodebuild test -project Pinnacle.xcodeproj -scheme Pinnacle -destination 'platform=macOS' -derivedDataPath /tmp/PinnacleDerivedData -only-testing:PinnacleTests/PinnacleSmokeTests` passed | P1-T01 |

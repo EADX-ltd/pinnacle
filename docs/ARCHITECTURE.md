@@ -65,28 +65,6 @@ Out of scope for v1:
 - `HUDOverlayView` (optional): small floating indicator for current tool/color with hover tooltip showing action name and key binding.
 - `RadialControlOverlay` (optional but recommended): compact center circle that expands to an outer donut of tools, with secondary donut options per selected tool.
 
-### 4.8 Radial Control Purpose and UX Contract
-Purpose:
-- Provide an in-session command surface so users can annotate effectively without relying only on keyboard shortcuts.
-- Offer fast access to high-frequency actions: tool switch, color select, stroke size, undo/redo, clear.
-- Improve discoverability by exposing shortcut hints via hover tooltips.
-
-Non-goals:
-- Do not replace full settings/configuration UI.
-- Do not obstruct drawing input or recording content more than necessary.
-
-Behavior contract:
-- Available in annotation mode; toggleable by shortcut/menu.
-- Default state is a single small collapsed circle.
-- Clicking the center circle activates control.
-- Activated control expands tool actions into an outer donut ring around the center circle.
-- Clicking a tool expands a secondary donut ring with options for that tool.
-- Control deactivates 5 seconds after losing focus (pointer leaves control and no interaction continues).
-- On deactivation, control collapses back to the single small circle.
-- Draggable with edge snap and remembers last position.
-- Pass-through interaction outside control bounds.
-- Hovering an actionable item shows tooltip with command label and current key binding.
-
 ### 4.2 App State and Domain
 - `AppSessionState`: `idle`, `annotating`, `recording`, `recordingAndAnnotating`, `paused`.
 - `ToolState`: current tool, color, stroke width, opacity.
@@ -128,6 +106,28 @@ Recommendation for v1:
 - `UserDefaults` for shortcuts, colors, preferences.
 - File system for recordings and optional exported snapshots.
 - Save output directory configurable; validate write permission before start.
+
+### 4.8 Radial Control Purpose and UX Contract
+Purpose:
+- Provide an in-session command surface so users can annotate effectively without relying only on keyboard shortcuts.
+- Offer fast access to high-frequency actions: tool switch, color select, stroke size, undo/redo, clear.
+- Improve discoverability by exposing shortcut hints via hover tooltips.
+
+Non-goals:
+- Do not replace full settings/configuration UI.
+- Do not obstruct drawing input or recording content more than necessary.
+
+Behavior contract:
+- Available in annotation mode; toggleable by shortcut/menu.
+- Default state is a single small collapsed circle.
+- Clicking the center circle activates control.
+- Activated control expands tool actions into an outer donut ring around the center circle.
+- Clicking a tool expands a secondary donut ring with options for that tool.
+- Control deactivates 5 seconds after losing focus (pointer leaves control and no interaction continues).
+- On deactivation, control collapses back to the single small circle.
+- Draggable with edge snap and remembers last position.
+- Pass-through interaction outside control bounds.
+- Hovering an actionable item shows tooltip with command label and current key binding.
 
 ## 5. Tooling Model
 
@@ -287,7 +287,7 @@ This section is the executable roadmap. The implementing AI agent must complete 
 The concrete, task-level execution board is `docs/IMPLEMENTATION_TASKS.md` and must be kept current during implementation.
 
 ### 11.1 Phase Checklist
-- [ ] Phase 0: Project scaffolding and protocols
+- [x] Phase 0: Project scaffolding and protocols
 - [ ] Phase 1: Menu bar app shell and state store
 - [ ] Phase 2: Global shortcuts
 - [ ] Phase 3: Overlay engine (single display)
@@ -436,6 +436,8 @@ Every implementation phase must satisfy all gates below before being marked comp
 | Date | Phase | Decision | Reason | Impact |
 |---|---|---|---|---|
 | YYYY-MM-DD | N | TBD | TBD | TBD |
+| 2026-03-31 | 0 | Introduced protocol-first service layer with `AppContainer` composition root and no-op/in-memory bootstrap implementations | Establishes strict module boundaries early while keeping Phase 0 startup stable and testable | Enables future phase services to swap concrete implementations without changing UI/domain contracts; adds runnable smoke-test target baseline |
+| 2026-03-31 | 0 | Updated protocol isolation contracts and preference serialization rules; reordered section 4 headings sequentially | Addresses concrete review findings for concurrency correctness, persistence safety, and document navigability | Prevents actor isolation leaks and non-codable preference writes; improves test signal quality and architecture readability |
 
 ## 14. Risks and Mitigations
 - Global hotkey API edge cases:
