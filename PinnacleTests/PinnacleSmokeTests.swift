@@ -299,7 +299,7 @@ final class PinnacleSmokeTests: XCTestCase {
         ))
         let text = OverlaySceneElement(kind: .text(
             text: "Title",
-            center: CGPoint(x: 150, y: 140),
+            origin: CGPoint(x: 150, y: 140),
             fontSize: 24,
             colorHexRGBA: "#FFFFFFFF",
             opacity: 1,
@@ -369,6 +369,116 @@ final class PinnacleSmokeTests: XCTestCase {
         XCTAssertEqual(scene.elements.map(\.id), [lower.id])
     }
 
+    func testShiftConstrainedStrokeCommitsStraightPreviewLine() {
+        let viewModel = OverlayViewModel()
+        viewModel.toolState.activeTool = .pen
+
+        viewModel.handleDragChanged(
+            startLocation: CGPoint(x: 10, y: 10),
+            location: CGPoint(x: 10, y: 10)
+        )
+        viewModel.handleDragChanged(
+            startLocation: CGPoint(x: 10, y: 10),
+            location: CGPoint(x: 60, y: 45),
+            isShiftConstrained: true
+        )
+        viewModel.handleDragEnded(
+            startLocation: CGPoint(x: 10, y: 10),
+            location: CGPoint(x: 60, y: 45),
+            translation: CGSize(width: 50, height: 35),
+            isShiftConstrained: true
+        )
+
+        guard case let .stroke(points, _, _, _, _) = viewModel.sceneElements.last?.kind else {
+            return XCTFail("Expected stroke element")
+        }
+        XCTAssertEqual(points, [CGPoint(x: 10, y: 10), CGPoint(x: 60, y: 45)])
+    }
+
+    func testShiftConstrainedArrowSnapsToNearestFortyFiveDegrees() {
+        let viewModel = OverlayViewModel()
+        viewModel.toolState.activeTool = .arrow
+
+        viewModel.handleDragChanged(
+            startLocation: .zero,
+            location: CGPoint(x: 80, y: 20),
+            isShiftConstrained: true
+        )
+
+        guard case let .arrow(start, end, _, _, _, _, _) = viewModel.previewElement?.kind else {
+            return XCTFail("Expected arrow preview")
+        }
+        XCTAssertEqual(start, .zero)
+        XCTAssertEqual(end.y, 0, accuracy: 0.0001)
+        XCTAssertEqual(end.x, hypot(80, 20), accuracy: 0.0001)
+    }
+
+    func testShiftConstrainedRectanglePreviewsSquare() {
+        let viewModel = OverlayViewModel()
+        viewModel.toolState.activeTool = .rectangle
+
+        viewModel.handleDragChanged(
+            startLocation: CGPoint(x: 10, y: 10),
+            location: CGPoint(x: 50, y: 30),
+            isShiftConstrained: true
+        )
+
+        guard case let .rectangle(rect, _, _, _, _) = viewModel.previewElement?.kind else {
+            return XCTFail("Expected rectangle preview")
+        }
+        XCTAssertEqual(rect.width, rect.height, accuracy: 0.0001)
+        XCTAssertEqual(rect.origin.x, 10, accuracy: 0.0001)
+        XCTAssertEqual(rect.origin.y, 10, accuracy: 0.0001)
+    }
+
+    func testShiftConstrainedEllipseUsesStartPointAsCenter() {
+        let viewModel = OverlayViewModel()
+        viewModel.toolState.activeTool = .ellipse
+
+        viewModel.handleDragChanged(
+            startLocation: CGPoint(x: 100, y: 100),
+            location: CGPoint(x: 130, y: 140),
+            isShiftConstrained: true
+        )
+
+        guard case let .ellipse(rect, _, _, _, _) = viewModel.previewElement?.kind else {
+            return XCTFail("Expected ellipse preview")
+        }
+        XCTAssertEqual(rect.midX, 100, accuracy: 0.0001)
+        XCTAssertEqual(rect.midY, 100, accuracy: 0.0001)
+        XCTAssertEqual(rect.width, rect.height, accuracy: 0.0001)
+    }
+
+    func testCenterTapExitsPassThroughWithoutSelectingTool() {
+        let viewModel = OverlayViewModel()
+        viewModel.isRadialExpanded = true
+        viewModel.enterPassThroughMode()
+
+        viewModel.handleCenterTap()
+
+        XCTAssertFalse(viewModel.isPassThroughMode)
+        XCTAssertTrue(viewModel.isRadialExpanded)
+        XCTAssertNil(viewModel.selectedToolForOptions)
+    }
+
+    func testTooltipIncludesShiftHintForConstrainedTool() {
+        let viewModel = OverlayViewModel()
+        viewModel.shortcutLabelByCommand = [.selectRectangle: "Ctrl+Opt+4"]
+
+        let tooltip = viewModel.tooltip(for: .tool(.rectangle))
+
+        XCTAssertEqual(tooltip, "Rectangle (Ctrl+Opt+4) · Shift: Square")
+    }
+
+    func testEnsureInitialRadialPositionPlacesControlOnRightSide() {
+        let viewModel = OverlayViewModel()
+
+        viewModel.ensureInitialRadialPosition(in: CGSize(width: 1440, height: 900))
+
+        XCTAssertEqual(viewModel.radialCenter.x, 1220, accuracy: 0.0001)
+        XCTAssertEqual(viewModel.radialCenter.y, 220, accuracy: 0.0001)
+    }
+
     func testOverlaySceneElementLineStyleAndArrowStyleStoredPerElement() {
         let dashedArrow = OverlaySceneElement(kind: .arrow(
             start: CGPoint(x: 0, y: 0),
@@ -403,7 +513,7 @@ final class PinnacleSmokeTests: XCTestCase {
     func testOverlaySceneTextElementStoresFontDesign() {
         let serifText = OverlaySceneElement(kind: .text(
             text: "Hello",
-            center: CGPoint(x: 100, y: 100),
+            origin: CGPoint(x: 100, y: 100),
             fontSize: 24,
             colorHexRGBA: "#FFFFFFFF",
             opacity: 1,

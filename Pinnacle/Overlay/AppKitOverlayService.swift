@@ -220,12 +220,20 @@ final class AppKitOverlayService: OverlayService {
         viewModel.$isOverlayVisible
             .sink { [weak self] _ in
                 self?.refreshOverlayInteractionState()
+                self?.refreshCursor()
             }
             .store(in: &cancellables)
 
         viewModel.$isPassThroughMode
             .sink { [weak self] _ in
                 self?.refreshOverlayInteractionState()
+                self?.refreshCursor()
+            }
+            .store(in: &cancellables)
+
+        viewModel.$toolState
+            .sink { [weak self] _ in
+                self?.refreshCursor()
             }
             .store(in: &cancellables)
 
@@ -326,6 +334,19 @@ final class AppKitOverlayService: OverlayService {
         }
     }
 
+    private func refreshCursor() {
+        for panel in overlayPanelByDisplayID.values {
+            guard let container = panel.contentView as? PassThroughContainerView else { continue }
+            panel.invalidateCursorRects(for: container)
+        }
+
+        if viewModel.isOverlayVisible, !viewModel.isPassThroughMode, viewModel.toolState.activeTool == .eraser {
+            NSCursor.pinnacleEraser.set()
+        } else {
+            NSCursor.arrow.set()
+        }
+    }
+
     private func passThroughRadialPanelLayout(for displayFrame: CGRect) -> (frame: CGRect, localCenter: CGPoint) {
         let size = CGSize(width: 360, height: 460)
         let localCenter = CGPoint(x: size.width * 0.5, y: 128)
@@ -418,17 +439,19 @@ final class AppKitOverlayService: OverlayService {
         let transformer = DisplayCoordinateTransformer(displayFrame: descriptor.frame)
         let globalPt = transformer.localPointToGlobal(localPt)
 
+        let isShiftConstrained = event.modifierFlags.contains(.shift)
+
         switch event.type {
         case .leftMouseDown:
             dragStartGlobalPoint = globalPt
-            viewModel.handleDragChanged(startLocation: globalPt, location: globalPt)
+            viewModel.handleDragChanged(startLocation: globalPt, location: globalPt, isShiftConstrained: isShiftConstrained)
         case .leftMouseDragged:
             guard let startPt = dragStartGlobalPoint else { return }
-            viewModel.handleDragChanged(startLocation: startPt, location: globalPt)
+            viewModel.handleDragChanged(startLocation: startPt, location: globalPt, isShiftConstrained: isShiftConstrained)
         case .leftMouseUp:
             let startPt = dragStartGlobalPoint ?? globalPt
             let translation = CGSize(width: globalPt.x - startPt.x, height: globalPt.y - startPt.y)
-            viewModel.handleDragEnded(startLocation: startPt, location: globalPt, translation: translation)
+            viewModel.handleDragEnded(startLocation: startPt, location: globalPt, translation: translation, isShiftConstrained: isShiftConstrained)
             dragStartGlobalPoint = nil
         default:
             break

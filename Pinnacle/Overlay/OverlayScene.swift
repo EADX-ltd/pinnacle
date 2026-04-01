@@ -7,7 +7,7 @@ struct OverlaySceneElement: Identifiable, Equatable {
         case arrow(start: CGPoint, end: CGPoint, width: CGFloat, colorHexRGBA: String, opacity: Double, lineStyle: LineStyle, arrowStyle: ArrowStyle)
         case rectangle(rect: CGRect, width: CGFloat, colorHexRGBA: String, opacity: Double, lineStyle: LineStyle)
         case ellipse(rect: CGRect, width: CGFloat, colorHexRGBA: String, opacity: Double, lineStyle: LineStyle)
-        case text(text: String, center: CGPoint, fontSize: CGFloat, colorHexRGBA: String, opacity: Double, fontDesign: TextFontDesign)
+        case text(text: String, origin: CGPoint, fontSize: CGFloat, colorHexRGBA: String, opacity: Double, fontDesign: TextFontDesign)
     }
 
     let id: UUID
@@ -52,7 +52,7 @@ struct OverlaySceneElement: Identifiable, Equatable {
 struct OverlayTextItem: Identifiable, Equatable {
     let id: UUID
     let text: String
-    let center: CGPoint
+    let origin: CGPoint
     let fontSize: CGFloat
     let colorHexRGBA: String
     let opacity: Double
@@ -61,7 +61,7 @@ struct OverlayTextItem: Identifiable, Equatable {
 
 struct TextDraft: Equatable {
     var text: String
-    var center: CGPoint
+    var origin: CGPoint
 }
 
 struct OverlaySceneModel {
@@ -153,8 +153,8 @@ extension OverlaySceneElement {
         case let .ellipse(rect, width, _, _, _):
             let expanded = rect.insetBy(dx: -max(width, 10), dy: -max(width, 10))
             return expanded.contains(point)
-        case let .text(text, center, fontSize, _, _, _):
-            let bounds = CGRect(textCenter: center, text: text, fontSize: fontSize)
+        case let .text(text, origin, fontSize, _, _, _):
+            let bounds = CGRect(textOrigin: origin, text: text, fontSize: fontSize)
             return bounds.contains(point)
         }
     }
@@ -215,12 +215,12 @@ extension CGRect {
         )
     }
 
-    init(textCenter: CGPoint, text: String, fontSize: CGFloat) {
+    init(textOrigin: CGPoint, text: String, fontSize: CGFloat) {
         let estimatedWidth = max(44, CGFloat(text.count) * fontSize * 0.62)
         let estimatedHeight = max(24, fontSize * 1.5)
         self.init(
-            x: textCenter.x - (estimatedWidth * 0.5),
-            y: textCenter.y - (estimatedHeight * 0.5),
+            x: textOrigin.x,
+            y: textOrigin.y - (estimatedHeight * 0.5),
             width: estimatedWidth,
             height: estimatedHeight
         )

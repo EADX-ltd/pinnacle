@@ -21,16 +21,18 @@ struct OverlayRootView: View {
                     }
                 }
                 ForEach(Array(viewModel.textItems.enumerated()), id: \.element.id) { _, item in
-                    if coordinateTransformer.displayFrame.contains(item.center) {
-                        let localCenter = coordinateTransformer.globalPointToLocal(item.center)
+                    if coordinateTransformer.displayFrame.contains(item.origin) {
+                        let localOrigin = coordinateTransformer.globalPointToLocal(item.origin)
                         Text(item.text)
                             .font(.system(size: item.fontSize, weight: .semibold, design: item.fontDesign.fontDesign))
                             .foregroundStyle(Color(hexRGBA: item.colorHexRGBA).opacity(item.opacity))
-                            .position(x: localCenter.x, y: localCenter.y)
+                            .multilineTextAlignment(.leading)
+                            .frame(width: 300, alignment: .leading)
+                            .position(x: localOrigin.x + 150, y: localOrigin.y)
                             .allowsHitTesting(false)
                     }
                 }
-                if let textDraft = viewModel.textDraft, coordinateTransformer.displayFrame.contains(textDraft.center) {
+                if let textDraft = viewModel.textDraft, coordinateTransformer.displayFrame.contains(textDraft.origin) {
                     let fontSize = CGFloat(viewModel.textDraftActiveConfig.strokeWidth)
                     let nsColor = NSColor(Color(hexRGBA: viewModel.textDraftActiveConfig.colorHexRGBA).opacity(viewModel.textDraftActiveConfig.opacity))
                     OverlayTextField(
@@ -44,8 +46,8 @@ struct OverlayRootView: View {
                     )
                     .frame(width: 300, height: fontSize * 1.5)
                     .position(
-                        x: coordinateTransformer.globalPointToLocal(textDraft.center).x,
-                        y: coordinateTransformer.globalPointToLocal(textDraft.center).y
+                        x: coordinateTransformer.globalPointToLocal(textDraft.origin).x + 150,
+                        y: coordinateTransformer.globalPointToLocal(textDraft.origin).y
                     )
                 }
                 if viewModel.isRadialControlEnabled && !viewModel.isPassThroughMode {
@@ -53,6 +55,9 @@ struct OverlayRootView: View {
                 }
             }
             .coordinateSpace(name: "overlay")
+            .onAppear {
+                viewModel.ensureInitialRadialPosition(in: proxy.size)
+            }
         }
         .ignoresSafeArea()
         .opacity(viewModel.isOverlayVisible ? 1 : 0)
@@ -120,13 +125,13 @@ struct OverlayRootView: View {
                     lineStyle: lineStyle
                 )
             )
-        case let .text(text, center, fontSize, colorHexRGBA, opacity, fontDesign):
-            guard coordinateTransformer.displayFrame.contains(center) else { return nil }
+        case let .text(text, origin, fontSize, colorHexRGBA, opacity, fontDesign):
+            guard coordinateTransformer.displayFrame.contains(origin) else { return nil }
             return OverlaySceneElement(
                 id: element.id,
                 kind: .text(
                     text: text,
-                    center: coordinateTransformer.globalPointToLocal(center),
+                    origin: coordinateTransformer.globalPointToLocal(origin),
                     fontSize: fontSize,
                     colorHexRGBA: colorHexRGBA,
                     opacity: opacity,
@@ -262,7 +267,7 @@ struct OverlayTextField: NSViewRepresentable {
         field.isSelectable = true
         field.font = font
         field.textColor = color
-        field.alignment = .center
+        field.alignment = .left
         field.delegate = context.coordinator
         DispatchQueue.main.async {
             field.window?.makeFirstResponder(field)
@@ -273,6 +278,7 @@ struct OverlayTextField: NSViewRepresentable {
     func updateNSView(_ nsView: NSTextField, context: Context) {
         nsView.font = font
         nsView.textColor = color
+        nsView.alignment = .left
         if nsView.stringValue != text { nsView.stringValue = text }
     }
 

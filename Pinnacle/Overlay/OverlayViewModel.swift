@@ -44,6 +44,7 @@ final class OverlayViewModel: ObservableObject {
     private var textDraftConfig: ToolConfig?
     private var textDraftExtendedOptions: ToolExtendedOptions?
     private let radialEdgeInset: CGFloat = 56
+    private var hasInitializedRadialPosition = false
 
     var activeConfig: ToolConfig {
         toolState.configs[toolState.activeTool] ?? ToolConfig(colorHexRGBA: "#FF3B30FF", strokeWidth: 4, opacity: 1)
@@ -86,12 +87,12 @@ final class OverlayViewModel: ObservableObject {
         ]
     }
 
-    func handleDragChanged(startLocation: CGPoint, location: CGPoint) {
+    func handleDragChanged(startLocation: CGPoint, location: CGPoint, isShiftConstrained: Bool = false) {
         switch toolState.activeTool {
         case .pen, .highlighter:
-            handleStrokeDragChanged(location)
+            handleStrokeDragChanged(startLocation: startLocation, location: location, isShiftConstrained: isShiftConstrained)
         case .arrow, .rectangle, .ellipse:
-            handleShapeDragChanged(startLocation: startLocation, location: location)
+            handleShapeDragChanged(startLocation: startLocation, location: location, isShiftConstrained: isShiftConstrained)
         case .eraser:
             _ = scene.eraseTopmostElement(at: location)
             syncSceneState()
@@ -100,10 +101,10 @@ final class OverlayViewModel: ObservableObject {
         }
     }
 
-    func handleDragEnded(startLocation: CGPoint, location: CGPoint, translation: CGSize) {
+    func handleDragEnded(startLocation: CGPoint, location: CGPoint, translation: CGSize, isShiftConstrained: Bool = false) {
         switch toolState.activeTool {
         case .pen, .highlighter:
-            handleStrokeDragEnded()
+            handleStrokeDragEnded(startLocation: startLocation, location: location, isShiftConstrained: isShiftConstrained)
         case .arrow, .rectangle, .ellipse:
             handleShapeDragEnded(translation: translation)
         case .text:
@@ -130,7 +131,7 @@ final class OverlayViewModel: ObservableObject {
         let element = OverlaySceneElement(
             kind: .text(
                 text: trimmed,
-                center: textDraft.center,
+                origin: textDraft.origin,
                 fontSize: CGFloat(config.strokeWidth),
                 colorHexRGBA: config.colorHexRGBA,
                 opacity: config.opacity,
@@ -198,6 +199,24 @@ final class OverlayViewModel: ObservableObject {
         if isOptionsOpen { cancelOptions() } else { openOptions() }
     }
 
+    func handleCenterTap() {
+        if isPassThroughMode {
+            exitPassThroughMode()
+            activateRadialControl()
+            return
+        }
+
+        if isRadialExpanded {
+            if let tool = selectedToolForOptions, tool.hasConfigurableOptions {
+                toggleOptions()
+            } else {
+                collapseRadialControl()
+            }
+        } else {
+            activateRadialControl()
+        }
+    }
+
     func moveRadialControl(to location: CGPoint, in size: CGSize) {
         let minX: CGFloat = radialEdgeInset
         let minY: CGFloat = radialEdgeInset
@@ -208,6 +227,15 @@ final class OverlayViewModel: ObservableObject {
             y: Swift.min(Swift.max(location.y, minY), maxY)
         )
         radialCenter = clamped
+    }
+
+    func ensureInitialRadialPosition(in size: CGSize) {
+        guard !hasInitializedRadialPosition else { return }
+        hasInitializedRadialPosition = true
+        moveRadialControl(
+            to: CGPoint(x: size.width - 220, y: 220),
+            in: size
+        )
     }
 
     func selectPrimaryItem(_ item: RadialItem) {
@@ -229,7 +257,11 @@ final class OverlayViewModel: ObservableObject {
         switch item {
         case let .tool(tool):
             let command = tool.shortcutCommandID
-            return "\(tool.rawValue.capitalized) (\(shortcutLabelByCommand[command] ?? "Unbound"))"
+            var text = "\(tool.rawValue.capitalized) (\(shortcutLabelByCommand[command] ?? "Unbound"))"
+            if let shiftHint = shiftHint(for: tool) {
+                text += " · Shift: \(shiftHint)"
+            }
+            return text
         case let .action(action):
             return "\(action.label) (\(shortcutLabelByCommand[action.shortcutCommandID] ?? "Unbound"))"
         }
@@ -237,7 +269,11 @@ final class OverlayViewModel: ObservableObject {
 
     var hudTooltip: String {
         let command = toolState.activeTool.shortcutCommandID
-        return "\(toolState.activeTool.rawValue.capitalized) (\(shortcutLabelByCommand[command] ?? "Unbound"))"
+        var text = "\(toolState.activeTool.rawValue.capitalized) (\(shortcutLabelByCommand[command] ?? "Unbound"))"
+        if let shiftHint = shiftHint(for: toolState.activeTool) {
+            text += " · Shift: \(shiftHint)"
+        }
+        return text
     }
 
     func enterPassThroughMode() {
@@ -265,18 +301,30 @@ final class OverlayViewModel: ObservableObject {
         commitTextDraft()
         textDraftConfig = toolState.configs[toolState.activeTool]
         textDraftExtendedOptions = toolState.extendedOptions[toolState.activeTool]
-        textDraft = TextDraft(text: "", center: point)
+        textDraft = TextDraft(text: "", origin: point)
         onTextEditingActive?(true)
     }
 
-    private func handleStrokeDragChanged(_ location: CGPoint) {
+    private func handleStrokeDragChanged(startLocation: CGPoint, location: CGPoint, isShiftConstrained: Bool) {
         if currentStrokePoints.isEmpty {
             strokeStartTime = Date()
+            currentStrokePoints = [startLocation]
         }
-        currentStrokePoints.append(location)
+
+        let start = currentStrokePoints.first ?? startLocation
+        let previewPoints: [CGPoint]
+        if isShiftConstrained {
+            previewPoints = [start, location]
+        } else {
+            if currentStrokePoints.last != location {
+                currentStrokePoints.append(location)
+            }
+            previewPoints = currentStrokePoints
+        }
+
         previewElement = OverlaySceneElement(
             kind: .stroke(
-                points: currentStrokePoints,
+                points: previewPoints,
                 width: CGFloat(activeConfig.strokeWidth),
                 colorHexRGBA: activeConfig.colorHexRGBA,
                 opacity: activeConfig.opacity,
@@ -285,9 +333,11 @@ final class OverlayViewModel: ObservableObject {
         )
     }
 
-    private func handleStrokeDragEnded() {
-        guard !currentStrokePoints.isEmpty else { return }
-        var points = currentStrokePoints
+    private func handleStrokeDragEnded(startLocation: CGPoint, location: CGPoint, isShiftConstrained: Bool) {
+        guard !currentStrokePoints.isEmpty || isShiftConstrained else { return }
+        var points = isShiftConstrained
+            ? [currentStrokePoints.first ?? startLocation, location]
+            : currentStrokePoints
         if points.count == 1, let point = points.first {
             points.append(point)
         }
@@ -310,15 +360,15 @@ final class OverlayViewModel: ObservableObject {
         syncSceneState()
     }
 
-    private func handleShapeDragChanged(startLocation: CGPoint, location: CGPoint) {
+    private func handleShapeDragChanged(startLocation: CGPoint, location: CGPoint, isShiftConstrained: Bool) {
         if drawingStartPoint == nil {
             drawingStartPoint = startLocation
         }
         let start = drawingStartPoint ?? startLocation
-        let end = location
         let extOpts = activeExtendedOptions
         switch toolState.activeTool {
         case .arrow:
+            let end = constrainedArrowEndPoint(start: start, location: location, isShiftConstrained: isShiftConstrained)
             previewElement = OverlaySceneElement(
                 kind: .arrow(
                     start: start,
@@ -331,9 +381,10 @@ final class OverlayViewModel: ObservableObject {
                 )
             )
         case .rectangle:
+            let rect = rectangleRect(start: start, location: location, isShiftConstrained: isShiftConstrained)
             previewElement = OverlaySceneElement(
                 kind: .rectangle(
-                    rect: CGRect.normalized(from: start, to: end),
+                    rect: rect,
                     width: CGFloat(activeConfig.strokeWidth),
                     colorHexRGBA: activeConfig.colorHexRGBA,
                     opacity: activeConfig.opacity,
@@ -341,9 +392,10 @@ final class OverlayViewModel: ObservableObject {
                 )
             )
         case .ellipse:
+            let rect = ellipseRect(start: start, location: location, isShiftConstrained: isShiftConstrained)
             previewElement = OverlaySceneElement(
                 kind: .ellipse(
-                    rect: CGRect.normalized(from: start, to: end),
+                    rect: rect,
                     width: CGFloat(activeConfig.strokeWidth),
                     colorHexRGBA: activeConfig.colorHexRGBA,
                     opacity: activeConfig.opacity,
@@ -362,16 +414,75 @@ final class OverlayViewModel: ObservableObject {
         syncSceneState()
     }
 
+    private func constrainedArrowEndPoint(start: CGPoint, location: CGPoint, isShiftConstrained: Bool) -> CGPoint {
+        guard isShiftConstrained else { return location }
+
+        let deltaX = location.x - start.x
+        let deltaY = location.y - start.y
+        let distance = hypot(deltaX, deltaY)
+        guard distance > 0 else { return location }
+
+        let snappedAngle = (atan2(deltaY, deltaX) / (.pi / 4)).rounded() * (.pi / 4)
+        return CGPoint(
+            x: start.x + cos(snappedAngle) * distance,
+            y: start.y + sin(snappedAngle) * distance
+        )
+    }
+
+    private func rectangleRect(start: CGPoint, location: CGPoint, isShiftConstrained: Bool) -> CGRect {
+        guard isShiftConstrained else {
+            return CGRect.normalized(from: start, to: location)
+        }
+
+        let deltaX = location.x - start.x
+        let deltaY = location.y - start.y
+        let side = max(abs(deltaX), abs(deltaY))
+        let end = CGPoint(
+            x: start.x + side * deltaX.signumOrPositive,
+            y: start.y + side * deltaY.signumOrPositive
+        )
+        return CGRect.normalized(from: start, to: end)
+    }
+
+    private func ellipseRect(start: CGPoint, location: CGPoint, isShiftConstrained: Bool) -> CGRect {
+        guard isShiftConstrained else {
+            return CGRect.normalized(from: start, to: location)
+        }
+
+        let radius = hypot(location.x - start.x, location.y - start.y)
+        return CGRect(
+            x: start.x - radius,
+            y: start.y - radius,
+            width: radius * 2,
+            height: radius * 2
+        )
+    }
+
+    private func shiftHint(for tool: ToolKind) -> String? {
+        switch tool {
+        case .pen, .highlighter:
+            return "Straight line"
+        case .arrow:
+            return "Snap 45°"
+        case .rectangle:
+            return "Square"
+        case .ellipse:
+            return "Circle from center"
+        case .text, .eraser:
+            return nil
+        }
+    }
+
     private func syncSceneState() {
         sceneElements = scene.elements
         textItems = scene.elements.compactMap { element in
-            guard case let .text(text, center, fontSize, colorHexRGBA, opacity, fontDesign) = element.kind else {
+            guard case let .text(text, origin, fontSize, colorHexRGBA, opacity, fontDesign) = element.kind else {
                 return nil
             }
             return OverlayTextItem(
                 id: element.id,
                 text: text,
-                center: center,
+                origin: origin,
                 fontSize: fontSize,
                 colorHexRGBA: colorHexRGBA,
                 opacity: opacity,
@@ -384,5 +495,11 @@ final class OverlayViewModel: ObservableObject {
 extension CGSize {
     var length: CGFloat {
         sqrt((width * width) + (height * height))
+    }
+}
+
+private extension CGFloat {
+    var signumOrPositive: CGFloat {
+        self < 0 ? -1 : 1
     }
 }

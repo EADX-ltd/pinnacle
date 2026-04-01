@@ -26,6 +26,16 @@ final class OverlayPanel: NSPanel {
 final class PassThroughContainerView: NSView {
     weak var viewModel: OverlayViewModel?
 
+    override func resetCursorRects() {
+        super.resetCursorRects()
+        guard let viewModel,
+              viewModel.isOverlayVisible,
+              !viewModel.isPassThroughMode,
+              viewModel.toolState.activeTool == .eraser
+        else { return }
+        addCursorRect(bounds, cursor: .pinnacleEraser)
+    }
+
     override func hitTest(_ point: NSPoint) -> NSView? {
         guard let vm = viewModel, vm.isPassThroughMode else {
             return super.hitTest(point)
@@ -48,4 +58,21 @@ final class PassThroughContainerView: NSView {
 
         return nil
     }
+}
+extension NSCursor {
+    static let pinnacleEraser: NSCursor = {
+        guard let symbol = NSImage(
+            systemSymbolName: "eraser.fill",
+            accessibilityDescription: "Eraser"
+        )?.withSymbolConfiguration(.init(pointSize: 18, weight: .medium)) else {
+            return .crosshair
+        }
+        let image = NSImage(size: NSSize(width: 32, height: 32))
+        image.lockFocus()
+        NSColor.clear.set()
+        NSBezierPath(rect: NSRect(origin: .zero, size: image.size)).fill()
+        symbol.draw(in: NSRect(x: 6, y: 6, width: 20, height: 20))
+        image.unlockFocus()
+        return NSCursor(image: image, hotSpot: NSPoint(x: 8, y: 8))
+    }()
 }

@@ -32,6 +32,10 @@ struct RadialControlView: View {
                     .foregroundStyle(.white)
             }
             .frame(width: centerSize, height: centerSize)
+            .contentShape(Circle())
+            .onTapGesture {
+                viewModel.handleCenterTap()
+            }
             .gesture(
                 DragGesture(minimumDistance: 0, coordinateSpace: .named("overlay"))
                     .onChanged { value in
@@ -55,16 +59,7 @@ struct RadialControlView: View {
                     }
                     .onEnded { value in
                         dragGrabOffset = nil
-                        guard value.translation.length <= 4 else { return }
-                        if viewModel.isRadialExpanded {
-                            if let tool = viewModel.selectedToolForOptions, tool.hasConfigurableOptions {
-                                viewModel.toggleOptions()
-                            } else {
-                                viewModel.collapseRadialControl()
-                            }
-                        } else {
-                            viewModel.activateRadialControl()
-                        }
+                        guard allowsRelocation, value.translation.length > 4 else { return }
                     }
             )
 

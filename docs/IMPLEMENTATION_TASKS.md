@@ -20,8 +20,9 @@ This file is the execution board for implementation work. Use it with `docs/ARCH
 |---|---|
 | Current Task ID | `P3-T09` |
 | Current Phase | `3` |
-| Last Updated (UTC) | `2026-04-01 12:35` |
+| Last Updated (UTC) | `2026-04-01 13:45` |
 | Updated By | `agent` |
+| Notes | `Expanded Phase 3 polish now also includes a true center-button tap path so pass-through exit behaves like the tool buttons; remaining blocker is still manual macOS GUI validation.` |
 
 ## Phase Status Board
 
@@ -30,7 +31,7 @@ This file is the execution board for implementation work. Use it with `docs/ARCH
 | 0 | Project scaffolding and protocols | `done` | Task group `P0-*` all `done` |
 | 1 | Menu bar app shell and state store | `done` | Task group `P1-*` all `done` |
 | 2 | Global shortcuts | `done` | Task group `P2-*` all `done` |
-| 3 | Overlay engine (single display) | `in_progress` | Task group `P3-*` complete including radial behavior corrections and `P3-T09` checklist |
+| 3 | Overlay engine (single display) | `in_progress` | Task group `P3-*` complete except final `P3-T09` manual GUI checklist |
 | 4 | Tool renderers + undo/redo | `done` | Task group `P4-*` all `done` including per-tool options and modifier rules |
 | 5 | Multi-display support | `done` | Task group `P5-*` all `done` |
 | 6 | Recording engine integration | `todo` | Task group `P6-*` all `done` |
@@ -87,7 +88,7 @@ All previously listed items are `done`. The batch below was completed in this se
 | P3-T06 | Implement radial control shell (single-circle idle + outer donut tools) | P3-T01 | `done` | Control appears as a small idle circle by default and expands the first tool ring correctly after activation |
 | P3-T07 | Remove shared second ring and route tool clicks to per-tool options workflow | P3-T06, P1-T03 | `done` | Clicking a tool selects it and prepares tool-specific options flow instead of showing a generic second ring |
 | P3-T08 | Enforce pointer pass-through outside radial hit area | P3-T06, P3-T02 | `done` | Drawing interactions are unaffected outside radial control bounds |
-| P3-T09 | Add radial usability checks (auto-hide, edge snap, no lag) | P3-T06, P3-T07 | `in_progress` | Manual checklist confirms non-blocking behavior and smooth interaction |
+| P3-T09 | Add radial usability checks (auto-hide, edge snap, no lag) | P3-T06, P3-T07 | `blocked` | Manual checklist confirms non-blocking behavior and smooth interaction |
 | P3-T10 | Add radial quick actions (undo, redo, clear) | P4-T05, P4-T06, P3-T06 | `done` | Quick actions execute through command dispatcher and reflect state immediately |
 | P3-T11 | Add hover tooltips on HUD/radial items with mapped key bindings | P2-T02, P3-T06 | `done` | On hover, tooltip shows command label + current binding and updates after remap |
 | P3-T12 | Enforce annotation-mode visibility rules for radial control | P1-T02, P3-T06 | `done` | Control appears/hides according to session mode contract without stale overlays |
@@ -182,6 +183,7 @@ All previously listed items are `done`. The batch below was completed in this se
 |---|---|---|---|---|
 | YYYY-MM-DD | P?-T?? | TBD | TBD | open |
 | 2026-03-31 | P3-T09 | Manual radial UX checklist requires running overlay interactions in macOS GUI session | Execute Phase 3 radial manual checklist in a full Xcode/macOS app runtime and record results | open |
+| 2026-04-01 | P3-T09 | New cursor and Shift-constrained drawing behavior still require live overlay verification in a full macOS GUI runtime | Run the app from Xcode, verify eraser cursor only appears outside pass-through mode, and confirm Shift-constrained pen/highlighter and arrow behavior | open |
 
 ## Execution Log
 | Date | Task ID | Change Summary | Validation | Next Task |
@@ -198,3 +200,7 @@ All previously listed items are `done`. The batch below was completed in this se
 | 2026-04-01 | P3/P4 rescope | Re-scoped radial UX to hover activation + 3s focus-loss timeout, removed generic second ring, and introduced per-tool options panel contract with `OK`/`Cancel` and per-tool fallback behavior | Documentation consistency review across `docs/ARCHITECTURE.md` and `docs/IMPLEMENTATION_TASKS.md` | P3-T13 |
 | 2026-04-01 | P3-T13,P3-T07,P3-T14,P3-T15,P3-T16,P3-T17,P4-T08,P4-T09,P4-T10,P4-T11 | Implemented activation lifecycle (hover→expand, focus-loss→3s collapse), removed generic secondary ring, added per-tool options panel with OK/Cancel anchored below first ring, center icon swaps to paintpalette for configurable tools, added LineStyle/ArrowStyle/TextFontDesign domain models, updated OverlaySceneElement.Kind to store line style and arrow style per element, wired double-headed arrow renderer, per-tool options stored in ToolState.extendedOptions and round-tripped through OverlayAction.applyToolOptions | Static code review; validation via targeted tests for ToolExtendedOptions defaults, applyToolOptions routing, element model per-field storage, and scene undo/redo; `xcodebuild` still unavailable (CommandLineTools) | P3-T09 |
 | 2026-04-01 | P3-T18,P3-T19,P3-T20,P3-T21,P4-T12,P4-T13 | Removed 3-second radial auto-collapse timer (HUD permanently expanded once activated); replaced `.help()` tooltips with custom `@State hoveredItem` overlay labels; added Escape key local event monitor with multi-level handler (cancel options → cancel text draft → deselect + enter pass-through); implemented `PassThroughContainerView` with per-area `hitTest` for pass-through mode where annotations stay visible but mouse events reach underlying apps; HUD/radial remain interactive via hit-test routing; added red `×` close button on options panel; fixed text-element config snapshot so in-progress text is isolated from live tool-config changes; app activated + overlay panel made key on annotation start for reliable local key monitoring | Static code review; `xcodebuild` unavailable (CommandLineTools) | P3-T09 |
+| 2026-04-01 | P3-T09 | Added an eraser-specific overlay cursor while annotation is active outside pass-through mode, and added Shift-constrained drawing so pen/highlighter commit a straight two-point stroke while arrows snap to 45° increments from drag origin | Static code review; added targeted unit tests for constrained stroke commit and arrow preview snapping; `xcodebuild` unavailable (CommandLineTools) | P3-T09 |
+| 2026-04-01 | P3-T09 | Added pass-through center-tap recovery with no selected tool, extended Shift-constrained previews to square and center-based circle geometry, and changed the text tool to use left-aligned anchored placement for both draft and committed text | `swiftc -frontend -parse Pinnacle/Overlay/OverlayScene.swift Pinnacle/Overlay/OverlayViewModel.swift Pinnacle/Overlay/OverlayRootView.swift Pinnacle/Overlay/RadialControlView.swift Pinnacle/Overlay/AppKitOverlayService.swift PinnacleTests/PinnacleSmokeTests.swift` passed; `xcodebuild` unavailable (CommandLineTools) | P3-T09 |
+| 2026-04-01 | P3-T09 | Updated tooltips to describe each tool’s `Shift` modifier behavior and moved the initial radial/HUD spawn to the right side of the display on first overlay appearance | `swiftc -frontend -parse Pinnacle/Overlay/OverlayViewModel.swift Pinnacle/Overlay/OverlayRootView.swift PinnacleTests/PinnacleSmokeTests.swift` passed; `xcodebuild` unavailable (CommandLineTools) | P3-T09 |
+| 2026-04-01 | P3-T09 | Changed the radial center `X` to use a direct tap path instead of relying on the drag gesture end-state, so exiting pass-through now behaves like clicking a tool even when no tool is selected | `swiftc -frontend -parse Pinnacle/Overlay/RadialControlView.swift Pinnacle/Overlay/OverlayViewModel.swift` passed; `xcodebuild` unavailable (CommandLineTools) | P3-T09 |
