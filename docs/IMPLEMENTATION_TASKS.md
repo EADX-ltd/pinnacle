@@ -20,7 +20,7 @@ This file is the execution board for implementation work. Use it with `docs/ARCH
 |---|---|
 | Current Task ID | `P3-T09` |
 | Current Phase | `3` |
-| Last Updated (UTC) | `2026-04-01 12:00` |
+| Last Updated (UTC) | `2026-04-01 12:35` |
 | Updated By | `agent` |
 
 ## Phase Status Board
@@ -87,7 +87,7 @@ All previously listed items are `done`. The batch below was completed in this se
 | P3-T06 | Implement radial control shell (single-circle idle + outer donut tools) | P3-T01 | `done` | Control appears as a small idle circle by default and expands the first tool ring correctly after activation |
 | P3-T07 | Remove shared second ring and route tool clicks to per-tool options workflow | P3-T06, P1-T03 | `done` | Clicking a tool selects it and prepares tool-specific options flow instead of showing a generic second ring |
 | P3-T08 | Enforce pointer pass-through outside radial hit area | P3-T06, P3-T02 | `done` | Drawing interactions are unaffected outside radial control bounds |
-| P3-T09 | Add radial usability checks (auto-hide, edge snap, no lag) | P3-T06, P3-T07 | `blocked` | Manual checklist confirms non-blocking behavior and smooth interaction |
+| P3-T09 | Add radial usability checks (auto-hide, edge snap, no lag) | P3-T06, P3-T07 | `in_progress` | Manual checklist confirms non-blocking behavior and smooth interaction |
 | P3-T10 | Add radial quick actions (undo, redo, clear) | P4-T05, P4-T06, P3-T06 | `done` | Quick actions execute through command dispatcher and reflect state immediately |
 | P3-T11 | Add hover tooltips on HUD/radial items with mapped key bindings | P2-T02, P3-T06 | `done` | On hover, tooltip shows command label + current binding and updates after remap |
 | P3-T12 | Enforce annotation-mode visibility rules for radial control | P1-T02, P3-T06 | `done` | Control appears/hides according to session mode contract without stale overlays |

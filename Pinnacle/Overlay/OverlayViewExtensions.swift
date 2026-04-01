@@ -1,4 +1,5 @@
 import Foundation
+import SwiftUI
 
 // MARK: - ToolKind overlay helpers
 
@@ -137,6 +138,19 @@ extension ShortcutKey {
         case .rightBracket: return "]"
         case .space: return "Space"
         case .backspace: return "Backspace"
+        }
+    }
+}
+
+extension TextFontDesign {
+    var fontDesign: Font.Design {
+        switch self {
+        case .system:
+            return .default
+        case .serif:
+            return .serif
+        case .monospaced:
+            return .monospaced
         }
     }
 }

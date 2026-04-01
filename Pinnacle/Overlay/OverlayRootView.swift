@@ -20,7 +20,7 @@ struct OverlayRootView: View {
                         }
                     }
                 }
-                ForEach(viewModel.textItems) { item in
+                ForEach(Array(viewModel.textItems.enumerated()), id: \.element.id) { _, item in
                     if coordinateTransformer.displayFrame.contains(item.center) {
                         let localCenter = coordinateTransformer.globalPointToLocal(item.center)
                         Text(item.text)
