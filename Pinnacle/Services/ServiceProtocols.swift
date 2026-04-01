@@ -1,6 +1,7 @@
 import Foundation
 import os
 import AppKit
+import Carbon.HIToolbox
 
 @MainActor
 protocol ShortcutService {
@@ -29,6 +30,7 @@ enum OverlayAction: Equatable {
     case cycleColors
     case increaseStroke
     case decreaseStroke
+    case applyToolOptions(ToolKind, ToolConfig, ToolExtendedOptions)
 }
 
 @MainActor
@@ -67,148 +69,178 @@ struct NoOpShortcutService: ShortcutService {
 
 @MainActor
 final class AppKitShortcutService: ShortcutService {
-    private struct KeyChord: Hashable {
-        let key: ShortcutKey
-        let modifiers: ShortcutModifiers
+    private struct HotKeyRegistration {
+        let id: UInt32
+        let binding: ShortcutBinding
+        let command: ShortcutCommandID
+        let reference: EventHotKeyRef?
     }
 
-    private var commandByChord: [KeyChord: ShortcutCommandID] = [:]
+    private var commandByHotKeyID: [UInt32: ShortcutCommandID] = [:]
+    private var registrations: [HotKeyRegistration] = []
     private var handler: (@MainActor (ShortcutCommandID) -> Void)?
-    private var localMonitor: Any?
-    private var globalMonitor: Any?
+    private var eventHandlerRef: EventHandlerRef?
+    private var nextHotKeyID: UInt32 = 1
     private let logger = Logger(subsystem: "Pinnacle", category: "ShortcutService")
 
     func register(bindings: [ShortcutBinding], handler: @escaping @MainActor (ShortcutCommandID) -> Void) throws {
         try unregisterAll()
-
-        var mapped: [KeyChord: ShortcutCommandID] = [:]
+        try ensureHotKeyEventHandlerInstalled()
         for binding in bindings {
-            mapped[KeyChord(key: binding.key, modifiers: binding.modifiers)] = binding.commandID
+            let hotKeyIDValue = nextHotKeyID
+            nextHotKeyID = nextHotKeyID &+ 1
+
+            let carbonHotKeyID = EventHotKeyID(signature: Self.hotKeySignature, id: hotKeyIDValue)
+            var reference: EventHotKeyRef?
+            let status = RegisterEventHotKey(
+                UInt32(binding.key.carbonKeyCode),
+                binding.modifiers.carbonFlags,
+                carbonHotKeyID,
+                GetApplicationEventTarget(),
+                0,
+                &reference
+            )
+            guard status == noErr else {
+                throw ShortcutServiceError.hotKeyRegistrationFailed(
+                    command: binding.commandID,
+                    status: status
+                )
+            }
+            registrations.append(
+                HotKeyRegistration(
+                    id: hotKeyIDValue,
+                    binding: binding,
+                    command: binding.commandID,
+                    reference: reference
+                )
+            )
+            commandByHotKeyID[hotKeyIDValue] = binding.commandID
         }
-        commandByChord = mapped
         self.handler = handler
-        installMonitors()
     }
 
     func unregisterAll() throws {
-        if let localMonitor {
-            NSEvent.removeMonitor(localMonitor)
-            self.localMonitor = nil
+        for registration in registrations {
+            if let reference = registration.reference {
+                UnregisterEventHotKey(reference)
+            }
         }
-        if let globalMonitor {
-            NSEvent.removeMonitor(globalMonitor)
-            self.globalMonitor = nil
-        }
-        commandByChord.removeAll()
+        registrations.removeAll()
+        commandByHotKeyID.removeAll()
         handler = nil
     }
 
-    private func installMonitors() {
-        guard localMonitor == nil, globalMonitor == nil else {
+    private func ensureHotKeyEventHandlerInstalled() throws {
+        guard eventHandlerRef == nil else {
             return
         }
-
-        localMonitor = NSEvent.addLocalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
-            guard let self else {
-                return event
-            }
-            return self.process(event) ? nil : event
-        }
-
-        globalMonitor = NSEvent.addGlobalMonitorForEvents(matching: [.keyDown]) { [weak self] event in
-            // Global monitor callback is non-isolated, so hop to MainActor before touching actor-isolated state.
-            // This keeps actor safety explicit even though it introduces a small async ordering difference vs local monitor.
-            Task { @MainActor in
-                _ = self?.process(event)
-            }
+        var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+        let status = InstallEventHandler(
+            GetApplicationEventTarget(),
+            { nextHandler, event, userData -> OSStatus in
+                appKitHotKeyEventHandler(nextHandler, event, userData)
+            },
+            1,
+            &eventType,
+            Unmanaged.passUnretained(self).toOpaque(),
+            &eventHandlerRef
+        )
+        guard status == noErr else {
+            throw ShortcutServiceError.hotKeyEventHandlerInstallationFailed(status: status)
         }
     }
 
-    private func process(_ event: NSEvent) -> Bool {
-        guard let key = ShortcutKey(event: event) else {
-            return false
+    fileprivate func dispatchHotKeyEvent(hotKeyID: UInt32) {
+        Task { @MainActor [weak self] in
+            guard
+                let self,
+                let command = self.commandByHotKeyID[hotKeyID]
+            else {
+                return
+            }
+            self.logger.log("Shortcut triggered: \(command.rawValue, privacy: .public)")
+            self.handler?(command)
         }
+    }
 
-        let modifiers = ShortcutModifiers(eventModifierFlags: event.modifierFlags)
-        guard let command = commandByChord[KeyChord(key: key, modifiers: modifiers)] else {
-            return false
+    private static let hotKeySignature: OSType = 0x504E434C // "PNCL"
+}
+
+private enum ShortcutServiceError: LocalizedError {
+    case hotKeyEventHandlerInstallationFailed(status: OSStatus)
+    case hotKeyRegistrationFailed(command: ShortcutCommandID, status: OSStatus)
+
+    var errorDescription: String? {
+        switch self {
+        case let .hotKeyEventHandlerInstallationFailed(status):
+            return "Failed to install global hotkey event handler (OSStatus \(status))."
+        case let .hotKeyRegistrationFailed(command, status):
+            return "Failed to register shortcut for \(command.rawValue) (OSStatus \(status))."
         }
-
-        logger.log("Shortcut triggered: \(command.rawValue, privacy: .public)")
-        handler?(command)
-        return true
     }
 }
 
+private func appKitHotKeyEventHandler(
+    _ nextHandler: EventHandlerCallRef?,
+    _ event: EventRef?,
+    _ userData: UnsafeMutableRawPointer?
+) -> OSStatus {
+    guard
+        let event,
+        let userData
+    else {
+        return noErr
+    }
+    var eventHotKeyID = EventHotKeyID()
+    let status = GetEventParameter(
+        event,
+        EventParamName(kEventParamDirectObject),
+        EventParamType(typeEventHotKeyID),
+        nil,
+        MemoryLayout<EventHotKeyID>.size,
+        nil,
+        &eventHotKeyID
+    )
+    guard status == noErr else {
+        return status
+    }
+    let service = Unmanaged<AppKitShortcutService>.fromOpaque(userData).takeUnretainedValue()
+    service.dispatchHotKeyEvent(hotKeyID: eventHotKeyID.id)
+    return noErr
+}
+
 private extension ShortcutModifiers {
-    init(eventModifierFlags flags: NSEvent.ModifierFlags) {
-        var mapped: ShortcutModifiers = []
-        if flags.contains(.control) {
-            mapped.insert(.control)
-        }
-        if flags.contains(.option) {
-            mapped.insert(.option)
-        }
-        if flags.contains(.shift) {
-            mapped.insert(.shift)
-        }
-        if flags.contains(.command) {
-            mapped.insert(.command)
-        }
-        self = mapped
+    var carbonFlags: UInt32 {
+        var flags: UInt32 = 0
+        if contains(.control) { flags |= UInt32(controlKey) }
+        if contains(.option) { flags |= UInt32(optionKey) }
+        if contains(.shift) { flags |= UInt32(shiftKey) }
+        if contains(.command) { flags |= UInt32(cmdKey) }
+        return flags
     }
 }
 
 private extension ShortcutKey {
-    static let deleteKeyCode: UInt16 = 0x33 // kVK_Delete in HIToolbox/Events.h
-
-    init?(event: NSEvent) {
-        switch event.keyCode {
-        case Self.deleteKeyCode:
-            self = .backspace
-            return
-        default:
-            break
-        }
-
-        let normalized = (event.charactersIgnoringModifiers ?? "").lowercased()
-        switch normalized {
-        case "a":
-            self = .a
-        case "r":
-            self = .r
-        case "p":
-            self = .p
-        case "1":
-            self = .one
-        case "2":
-            self = .two
-        case "3":
-            self = .three
-        case "4":
-            self = .four
-        case "5":
-            self = .five
-        case "6":
-            self = .six
-        case "e":
-            self = .e
-        case "z":
-            self = .z
-        case "c":
-            self = .c
-        case "[":
-            self = .leftBracket
-        case "]":
-            self = .rightBracket
-        case " ":
-            self = .space
-        case "\u{7f}":
-            self = .backspace
-        default:
-            return nil
-        }
+    var carbonKeyCode: Int {
+        switch self {
+        case .a: return kVK_ANSI_A
+        case .r: return kVK_ANSI_R
+        case .p: return kVK_ANSI_P
+        case .one: return kVK_ANSI_1
+        case .two: return kVK_ANSI_2
+        case .three: return kVK_ANSI_3
+        case .four: return kVK_ANSI_4
+        case .five: return kVK_ANSI_5
+        case .six: return kVK_ANSI_6
+        case .e: return kVK_ANSI_E
+        case .z: return kVK_ANSI_Z
+        case .c: return kVK_ANSI_C
+        case .leftBracket: return kVK_ANSI_LeftBracket
+        case .rightBracket: return kVK_ANSI_RightBracket
+        case .space: return kVK_Space
+        case .backspace: return kVK_Delete
     }
+}
 }
 
 @MainActor

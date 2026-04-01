@@ -7,32 +7,69 @@ import os
 final class AppKitOverlayService: OverlayService {
     private let logger = Logger(subsystem: "Pinnacle", category: "Overlay")
     private let viewModel = OverlayViewModel()
-    private var overlayPanel: OverlayPanel?
+    private var overlayPanelByDisplayID: [CGDirectDisplayID: OverlayPanel] = [:]
+    private var activeDisplayID: CGDirectDisplayID?
+    private var screenObserver: NSObjectProtocol?
+    private var drawEventMonitor: Any?
+    private var dragStartGlobalPoint: CGPoint?
     init() {
         viewModel.strokeDurationRecorder = { [logger] durationMs in
             logger.log("Pen stroke duration baseline: \(durationMs, format: .fixed(precision: 2), privacy: .public)ms")
         }
+        viewModel.onTextEditingActive = { [weak self] isEditing in
+            guard let self else { return }
+            if isEditing {
+                if let id = self.activeDisplayID, let panel = self.overlayPanelByDisplayID[id] {
+                    NSApp.activate(ignoringOtherApps: true)
+                    panel.makeKey()
+                }
+            } else {
+                for panel in self.overlayPanelByDisplayID.values where NSApp.keyWindow === panel {
+                    panel.resignKey()
+                    break
+                }
+            }
+        }
     }
     func startOverlay() {
-        if let overlayPanel, overlayPanel.frame.isEmpty {
-            self.overlayPanel = nil
-            logger.warning("Discarding cached zero-sized overlay panel and attempting recreation")
+        if screenObserver == nil {
+            screenObserver = NotificationCenter.default.addObserver(
+                forName: NSApplication.didChangeScreenParametersNotification,
+                object: nil,
+                queue: .main
+            ) { [weak self] _ in
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    self.synchronizeOverlayPanels()
+                    if self.viewModel.isOverlayVisible {
+                        self.orderActivePanelFront()
+                    }
+                }
+            }
         }
-        if overlayPanel == nil {
-            overlayPanel = makeOverlayPanel()
-        }
-        guard let overlayPanel else {
-            logger.error("No screen available - overlay panel cannot be created")
+        synchronizeOverlayPanels()
+        guard !overlayPanelByDisplayID.isEmpty else {
+            logger.error("No screen available - overlay panels cannot be created")
             return
         }
+        activeDisplayID = mouseDisplayID()
         viewModel.isOverlayVisible = true
-        overlayPanel.orderFrontRegardless()
-        logger.log("Overlay started")
+        orderActivePanelFront()
+        installMouseEventMonitor()
+        logger.log("Overlay started on display id=\(self.activeDisplayID ?? 0, privacy: .public)")
     }
     func stopOverlay() {
         viewModel.isOverlayVisible = false
         viewModel.collapseRadialControl()
-        overlayPanel?.orderOut(nil)
+        removeMouseEventMonitor()
+        for panel in overlayPanelByDisplayID.values {
+            panel.orderOut(nil)
+        }
+        activeDisplayID = nil
+        if let screenObserver {
+            NotificationCenter.default.removeObserver(screenObserver)
+            self.screenObserver = nil
+        }
         logger.log("Overlay stopped")
     }
     func update(toolState: ToolState) {
@@ -61,19 +98,114 @@ final class AppKitOverlayService: OverlayService {
     func setCommandHandler(_ handler: @escaping @MainActor (OverlayAction) -> Void) {
         viewModel.commandHandler = handler
     }
-    private func makeOverlayPanel() -> OverlayPanel? {
-        guard let screen = NSScreen.main ?? NSScreen.screens.first else {
-            overlayPanel = nil
-            return nil
+    private func orderActivePanelFront() {
+        let targetID = activeDisplayID
+            ?? NSScreen.main?.displayDescriptor?.id
+            ?? overlayPanelByDisplayID.keys.first
+        for (id, panel) in overlayPanelByDisplayID {
+            if id == targetID {
+                panel.orderFrontRegardless()
+            } else {
+                panel.orderOut(nil)
+            }
         }
-        let frame = screen.frame
-        let panel = OverlayPanel(contentRect: frame)
-        panel.contentView = NSHostingView(rootView: OverlayRootView(viewModel: viewModel))
+    }
+
+    private func mouseDisplayID() -> CGDirectDisplayID? {
+        let location = NSEvent.mouseLocation
+        return NSScreen.screens.first { $0.frame.contains(location) }?.displayDescriptor?.id
+    }
+    private func synchronizeOverlayPanels() {
+        let descriptors = NSScreen.screens.compactMap(\.displayDescriptor)
+        let activeIDs = Set(descriptors.map(\.id))
+        let staleIDs = Set(overlayPanelByDisplayID.keys).subtracting(activeIDs)
+        for staleID in staleIDs {
+            overlayPanelByDisplayID[staleID]?.close()
+            overlayPanelByDisplayID[staleID] = nil
+            logger.log("Removed overlay panel for detached display id=\(staleID, privacy: .public)")
+        }
+        for descriptor in descriptors {
+            if let panel = overlayPanelByDisplayID[descriptor.id] {
+                if panel.frame != descriptor.frame {
+                    panel.setFrame(descriptor.frame, display: true)
+                }
+                continue
+            }
+            guard let panel = makeOverlayPanel(for: descriptor) else {
+                logger.error("Failed to create overlay panel for display id=\(descriptor.id, privacy: .public)")
+                continue
+            }
+            overlayPanelByDisplayID[descriptor.id] = panel
+            logger.log("Created overlay panel for display id=\(descriptor.id, privacy: .public)")
+        }
+    }
+    private func makeOverlayPanel(for descriptor: DisplayDescriptor) -> OverlayPanel? {
+        let panel = OverlayPanel(contentRect: descriptor.frame)
+        panel.contentView = NSHostingView(
+            rootView: OverlayRootView(
+                viewModel: viewModel,
+                coordinateTransformer: DisplayCoordinateTransformer(displayFrame: descriptor.frame)
+            )
+        )
         return panel
+    }
+
+    private func installMouseEventMonitor() {
+        guard drawEventMonitor == nil else { return }
+        drawEventMonitor = NSEvent.addLocalMonitorForEvents(
+            matching: [.leftMouseDown, .leftMouseDragged, .leftMouseUp]
+        ) { [weak self] event in
+            self?.handleOverlayMouseEvent(event)
+            return event
+        }
+    }
+
+    private func removeMouseEventMonitor() {
+        guard let monitor = drawEventMonitor else { return }
+        NSEvent.removeMonitor(monitor)
+        drawEventMonitor = nil
+        dragStartGlobalPoint = nil
+    }
+
+    private func handleOverlayMouseEvent(_ event: NSEvent) {
+        guard viewModel.isOverlayVisible else { return }
+        guard let panel = event.window as? OverlayPanel,
+              let (displayID, _) = overlayPanelByDisplayID.first(where: { $0.value === panel }),
+              let descriptor = NSScreen.screens.compactMap(\.displayDescriptor).first(where: { $0.id == displayID })
+        else { return }
+
+        // Convert AppKit window coords (Y-up) → SwiftUI panel coords (Y-down)
+        let winPt = event.locationInWindow
+        let localPt = CGPoint(x: winPt.x, y: descriptor.frame.height - winPt.y)
+
+        // Don't start drawing inside the radial control area
+        let radialRadius: CGFloat = viewModel.isRadialExpanded ? 160 : 28
+        if hypot(localPt.x - viewModel.radialCenter.x, localPt.y - viewModel.radialCenter.y) < radialRadius {
+            return
+        }
+
+        let transformer = DisplayCoordinateTransformer(displayFrame: descriptor.frame)
+        let globalPt = transformer.localPointToGlobal(localPt)
+
+        switch event.type {
+        case .leftMouseDown:
+            dragStartGlobalPoint = globalPt
+            viewModel.handleDragChanged(startLocation: globalPt, location: globalPt)
+        case .leftMouseDragged:
+            guard let startPt = dragStartGlobalPoint else { return }
+            viewModel.handleDragChanged(startLocation: startPt, location: globalPt)
+        case .leftMouseUp:
+            let startPt = dragStartGlobalPoint ?? globalPt
+            let translation = CGSize(width: globalPt.x - startPt.x, height: globalPt.y - startPt.y)
+            viewModel.handleDragEnded(startLocation: startPt, location: globalPt, translation: translation)
+            dragStartGlobalPoint = nil
+        default:
+            break
+        }
     }
 }
 private final class OverlayPanel: NSPanel {
-    override var canBecomeKey: Bool { false }
+    override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { false }
     init(contentRect: NSRect) {
         super.init(
@@ -91,13 +223,55 @@ private final class OverlayPanel: NSPanel {
         collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary, .stationary]
     }
 }
+struct DisplayDescriptor: Equatable {
+    let id: CGDirectDisplayID
+    let frame: CGRect
+    let scaleFactor: CGFloat
+}
+struct DisplayCoordinateTransformer: Equatable {
+    let displayFrame: CGRect
+    func localPointToGlobal(_ point: CGPoint) -> CGPoint {
+        CGPoint(x: point.x + displayFrame.minX, y: point.y + displayFrame.minY)
+    }
+    func globalPointToLocal(_ point: CGPoint) -> CGPoint {
+        CGPoint(x: point.x - displayFrame.minX, y: point.y - displayFrame.minY)
+    }
+    func localRectToGlobal(_ rect: CGRect) -> CGRect {
+        CGRect(
+            x: rect.origin.x + displayFrame.minX,
+            y: rect.origin.y + displayFrame.minY,
+            width: rect.width,
+            height: rect.height
+        )
+    }
+    func globalRectToLocal(_ rect: CGRect) -> CGRect {
+        CGRect(
+            x: rect.origin.x - displayFrame.minX,
+            y: rect.origin.y - displayFrame.minY,
+            width: rect.width,
+            height: rect.height
+        )
+    }
+}
+private extension NSScreen {
+    var displayDescriptor: DisplayDescriptor? {
+        guard let displayNumber = deviceDescription[NSDeviceDescriptionKey("NSScreenNumber")] as? NSNumber else {
+            return nil
+        }
+        return DisplayDescriptor(
+            id: CGDirectDisplayID(displayNumber.uint32Value),
+            frame: frame,
+            scaleFactor: backingScaleFactor
+        )
+    }
+}
 struct OverlaySceneElement: Identifiable, Equatable {
     enum Kind: Equatable {
-        case stroke(points: [CGPoint], width: CGFloat, colorHexRGBA: String, opacity: Double)
-        case arrow(start: CGPoint, end: CGPoint, width: CGFloat, colorHexRGBA: String, opacity: Double)
-        case rectangle(rect: CGRect, width: CGFloat, colorHexRGBA: String, opacity: Double)
-        case ellipse(rect: CGRect, width: CGFloat, colorHexRGBA: String, opacity: Double)
-        case text(text: String, center: CGPoint, fontSize: CGFloat, colorHexRGBA: String, opacity: Double)
+        case stroke(points: [CGPoint], width: CGFloat, colorHexRGBA: String, opacity: Double, lineStyle: LineStyle)
+        case arrow(start: CGPoint, end: CGPoint, width: CGFloat, colorHexRGBA: String, opacity: Double, lineStyle: LineStyle, arrowStyle: ArrowStyle)
+        case rectangle(rect: CGRect, width: CGFloat, colorHexRGBA: String, opacity: Double, lineStyle: LineStyle)
+        case ellipse(rect: CGRect, width: CGFloat, colorHexRGBA: String, opacity: Double, lineStyle: LineStyle)
+        case text(text: String, center: CGPoint, fontSize: CGFloat, colorHexRGBA: String, opacity: Double, fontDesign: TextFontDesign)
     }
     let id: UUID
     var kind: Kind
@@ -107,41 +281,41 @@ struct OverlaySceneElement: Identifiable, Equatable {
     }
     var colorHexRGBA: String {
         switch kind {
-        case let .stroke(_, _, colorHexRGBA, _):
+        case let .stroke(_, _, colorHexRGBA, _, _):
             return colorHexRGBA
-        case let .arrow(_, _, _, colorHexRGBA, _):
+        case let .arrow(_, _, _, colorHexRGBA, _, _, _):
             return colorHexRGBA
-        case let .rectangle(_, _, colorHexRGBA, _):
+        case let .rectangle(_, _, colorHexRGBA, _, _):
             return colorHexRGBA
-        case let .ellipse(_, _, colorHexRGBA, _):
+        case let .ellipse(_, _, colorHexRGBA, _, _):
             return colorHexRGBA
-        case let .text(_, _, _, colorHexRGBA, _):
+        case let .text(_, _, _, colorHexRGBA, _, _):
             return colorHexRGBA
         }
     }
     var opacity: Double {
         switch kind {
-        case let .stroke(_, _, _, opacity):
+        case let .stroke(_, _, _, opacity, _):
             return opacity
-        case let .arrow(_, _, _, _, opacity):
+        case let .arrow(_, _, _, _, opacity, _, _):
             return opacity
-        case let .rectangle(_, _, _, opacity):
+        case let .rectangle(_, _, _, opacity, _):
             return opacity
-        case let .ellipse(_, _, _, opacity):
+        case let .ellipse(_, _, _, opacity, _):
             return opacity
-        case let .text(_, _, _, _, opacity):
+        case let .text(_, _, _, _, opacity, _):
             return opacity
         }
     }
     var lineWidth: CGFloat {
         switch kind {
-        case let .stroke(_, width, _, _):
+        case let .stroke(_, width, _, _, _):
             return width
-        case let .arrow(_, _, width, _, _):
+        case let .arrow(_, _, width, _, _, _, _):
             return width
-        case let .rectangle(_, width, _, _):
+        case let .rectangle(_, width, _, _, _):
             return width
-        case let .ellipse(_, width, _, _):
+        case let .ellipse(_, width, _, _, _):
             return width
         case .text:
             return 0
@@ -155,6 +329,7 @@ private struct OverlayTextItem: Identifiable, Equatable {
     let fontSize: CGFloat
     let colorHexRGBA: String
     let opacity: Double
+    let fontDesign: TextFontDesign
 }
 private struct TextDraft: Equatable {
     var text: String
@@ -249,10 +424,14 @@ private final class OverlayViewModel: ObservableObject {
     @Published var isRadialControlEnabled = true
     @Published var isRadialExpanded = false
     @Published var selectedToolForOptions: ToolKind?
+    @Published var isOptionsOpen = false
+    @Published var pendingConfig: ToolConfig = ToolState.default.configs[.pen]!
+    @Published var pendingExtendedOptions: ToolExtendedOptions = .default
     @Published var radialCenter = CGPoint(x: 220, y: 220)
     @Published var shortcutLabelByCommand: [ShortcutCommandID: String] = [:]
     var commandHandler: (@MainActor (OverlayAction) -> Void)?
     var strokeDurationRecorder: ((Double) -> Void)?
+    var onTextEditingActive: ((Bool) -> Void)?
     private var scene = OverlaySceneModel()
     private var drawingStartPoint: CGPoint?
     private var currentStrokePoints: [CGPoint] = []
@@ -261,6 +440,9 @@ private final class OverlayViewModel: ObservableObject {
     private let radialEdgeInset: CGFloat = 56
     var activeConfig: ToolConfig {
         toolState.configs[toolState.activeTool] ?? ToolConfig(colorHexRGBA: "#FF3B30FF", strokeWidth: 4, opacity: 1)
+    }
+    var activeExtendedOptions: ToolExtendedOptions {
+        toolState.extendedOptions[toolState.activeTool] ?? .default
     }
     var hudText: String {
         toolState.activeTool.rawValue.capitalized
@@ -282,44 +464,32 @@ private final class OverlayViewModel: ObservableObject {
             .action(.clearAll)
         ]
     }
-    var radialSecondaryItems: [RadialItem] {
-        guard selectedToolForOptions != nil else {
-            return []
-        }
-        return [
-            .action(.cycleColors),
-            .action(.increaseStroke),
-            .action(.decreaseStroke)
-        ]
-    }
-    func handleDragChanged(_ value: DragGesture.Value) {
+    func handleDragChanged(startLocation: CGPoint, location: CGPoint) {
         cancelRadialCollapse()
         switch toolState.activeTool {
         case .pen, .highlighter:
-            handleStrokeDragChanged(value.location)
+            handleStrokeDragChanged(location)
         case .arrow, .rectangle, .ellipse:
-            handleShapeDragChanged(value)
+            handleShapeDragChanged(startLocation: startLocation, location: location)
         case .eraser:
-            break
+            _ = scene.eraseTopmostElement(at: location)
+            syncSceneState()
         case .text:
             break
         }
     }
-    func handleDragEnded(_ value: DragGesture.Value) {
+    func handleDragEnded(startLocation: CGPoint, location: CGPoint, translation: CGSize) {
         switch toolState.activeTool {
         case .pen, .highlighter:
             handleStrokeDragEnded()
         case .arrow, .rectangle, .ellipse:
-            handleShapeDragEnded(value)
+            handleShapeDragEnded(translation: translation)
         case .text:
-            if value.translation.length <= 6 {
-                beginTextEditing(at: value.location)
+            if translation.length <= 6 {
+                beginTextEditing(at: location)
             }
         case .eraser:
-            if value.translation.length <= 6 {
-                _ = scene.eraseTopmostElement(at: value.location)
-                syncSceneState()
-            }
+            break
         }
         drawingStartPoint = nil
         previewElement = nil
@@ -328,6 +498,7 @@ private final class OverlayViewModel: ObservableObject {
         guard let textDraft else { return }
         let trimmed = textDraft.text.trimmingCharacters(in: .whitespacesAndNewlines)
         self.textDraft = nil
+        onTextEditingActive?(false)
         guard !trimmed.isEmpty else { return }
         let element = OverlaySceneElement(
             kind: .text(
@@ -335,7 +506,8 @@ private final class OverlayViewModel: ObservableObject {
                 center: textDraft.center,
                 fontSize: CGFloat(activeConfig.strokeWidth),
                 colorHexRGBA: activeConfig.colorHexRGBA,
-                opacity: activeConfig.opacity
+                opacity: activeConfig.opacity,
+                fontDesign: activeExtendedOptions.textFontDesign
             )
         )
         scene.commit(element)
@@ -343,7 +515,7 @@ private final class OverlayViewModel: ObservableObject {
     }
     func undoLastChange() {
         scene.undo()
-        textDraft = nil
+        if textDraft != nil { textDraft = nil; onTextEditingActive?(false) }
         syncSceneState()
     }
     func redoLastChange() {
@@ -353,53 +525,79 @@ private final class OverlayViewModel: ObservableObject {
     }
     func clearAll(allowUndo: Bool) {
         scene.clearAll(allowUndo: allowUndo)
-        textDraft = nil
+        if textDraft != nil { textDraft = nil; onTextEditingActive?(false) }
         syncSceneState()
     }
     func activateRadialControl() {
         guard isRadialControlEnabled else { return }
-        isRadialExpanded = true
+        if !isRadialExpanded { isRadialExpanded = true }
         cancelRadialCollapse()
     }
     func collapseRadialControl() {
         isRadialExpanded = false
         selectedToolForOptions = nil
+        isOptionsOpen = false
         cancelRadialCollapse()
     }
     func scheduleRadialCollapse() {
-        guard isRadialExpanded else { return }
+        guard isRadialExpanded, !isOptionsOpen else { return }
         cancelRadialCollapse()
         radialCollapseTask = Task { [weak self] in
-            try? await Task.sleep(for: .seconds(5))
-            guard !Task.isCancelled else { return }
+            do {
+                try await Task.sleep(for: .seconds(3))
+            } catch {
+                return
+            }
             self?.collapseRadialControl()
         }
+    }
+    func openOptions() {
+        guard isRadialExpanded,
+              let tool = selectedToolForOptions,
+              tool.hasConfigurableOptions else { return }
+        pendingConfig = toolState.configs[tool] ?? ToolConfig(colorHexRGBA: "#FF3B30FF", strokeWidth: 4, opacity: 1)
+        pendingExtendedOptions = toolState.extendedOptions[tool] ?? .default
+        isOptionsOpen = true
+        cancelRadialCollapse()
+    }
+    func confirmOptions() {
+        guard let tool = selectedToolForOptions else {
+            isOptionsOpen = false
+            return
+        }
+        toolState.configs[tool] = pendingConfig
+        toolState.extendedOptions[tool] = pendingExtendedOptions
+        commandHandler?(.applyToolOptions(tool, pendingConfig, pendingExtendedOptions))
+        isOptionsOpen = false
+    }
+    func cancelOptions() {
+        isOptionsOpen = false
+    }
+    func toggleOptions() {
+        if isOptionsOpen { cancelOptions() } else { openOptions() }
     }
     func moveRadialControl(to location: CGPoint, in size: CGSize) {
         let minX: CGFloat = radialEdgeInset
         let minY: CGFloat = radialEdgeInset
-        let maxX = max(minX, size.width - radialEdgeInset)
-        let maxY = max(minY, size.height - radialEdgeInset)
+        let maxX = Swift.max(minX, size.width - radialEdgeInset)
+        let maxY = Swift.max(minY, size.height - radialEdgeInset)
         let clamped = CGPoint(
-            x: min(max(location.x, minX), maxX),
-            y: min(max(location.y, minY), maxY)
+            x: Swift.min(Swift.max(location.x, minX), maxX),
+            y: Swift.min(Swift.max(location.y, minY), maxY)
         )
-        radialCenter = snapToNearestEdge(point: clamped, bounds: size)
+        radialCenter = clamped
     }
     func selectPrimaryItem(_ item: RadialItem) {
         activateRadialControl()
         switch item {
         case let .tool(tool):
+            // Close options if switching away from the currently configured tool
+            if tool != selectedToolForOptions { isOptionsOpen = false }
             selectedToolForOptions = tool
             commandHandler?(.selectTool(tool))
         case let .action(action):
             selectedToolForOptions = nil
-            commandHandler?(action)
-        }
-    }
-    func selectSecondaryItem(_ item: RadialItem) {
-        activateRadialControl()
-        if case let .action(action) = item {
+            isOptionsOpen = false
             commandHandler?(action)
         }
     }
@@ -419,6 +617,7 @@ private final class OverlayViewModel: ObservableObject {
     private func beginTextEditing(at point: CGPoint) {
         commitTextDraft()
         textDraft = TextDraft(text: "", center: point)
+        onTextEditingActive?(true)
     }
     private func handleStrokeDragChanged(_ location: CGPoint) {
         if currentStrokePoints.isEmpty {
@@ -430,7 +629,8 @@ private final class OverlayViewModel: ObservableObject {
                 points: currentStrokePoints,
                 width: CGFloat(activeConfig.strokeWidth),
                 colorHexRGBA: activeConfig.colorHexRGBA,
-                opacity: activeConfig.opacity
+                opacity: activeConfig.opacity,
+                lineStyle: activeExtendedOptions.lineStyle
             )
         )
     }
@@ -445,7 +645,8 @@ private final class OverlayViewModel: ObservableObject {
                 points: points,
                 width: CGFloat(activeConfig.strokeWidth),
                 colorHexRGBA: activeConfig.colorHexRGBA,
-                opacity: activeConfig.opacity
+                opacity: activeConfig.opacity,
+                lineStyle: activeExtendedOptions.lineStyle
             )
         )
         scene.commit(element)
@@ -457,12 +658,13 @@ private final class OverlayViewModel: ObservableObject {
         strokeStartTime = nil
         syncSceneState()
     }
-    private func handleShapeDragChanged(_ value: DragGesture.Value) {
+    private func handleShapeDragChanged(startLocation: CGPoint, location: CGPoint) {
         if drawingStartPoint == nil {
-            drawingStartPoint = value.startLocation
+            drawingStartPoint = startLocation
         }
-        let start = drawingStartPoint ?? value.startLocation
-        let end = value.location
+        let start = drawingStartPoint ?? startLocation
+        let end = location
+        let extOpts = activeExtendedOptions
         switch toolState.activeTool {
         case .arrow:
             previewElement = OverlaySceneElement(
@@ -471,7 +673,9 @@ private final class OverlayViewModel: ObservableObject {
                     end: end,
                     width: CGFloat(activeConfig.strokeWidth),
                     colorHexRGBA: activeConfig.colorHexRGBA,
-                    opacity: activeConfig.opacity
+                    opacity: activeConfig.opacity,
+                    lineStyle: extOpts.lineStyle,
+                    arrowStyle: extOpts.arrowStyle
                 )
             )
         case .rectangle:
@@ -480,7 +684,8 @@ private final class OverlayViewModel: ObservableObject {
                     rect: CGRect.normalized(from: start, to: end),
                     width: CGFloat(activeConfig.strokeWidth),
                     colorHexRGBA: activeConfig.colorHexRGBA,
-                    opacity: activeConfig.opacity
+                    opacity: activeConfig.opacity,
+                    lineStyle: extOpts.lineStyle
                 )
             )
         case .ellipse:
@@ -489,15 +694,16 @@ private final class OverlayViewModel: ObservableObject {
                     rect: CGRect.normalized(from: start, to: end),
                     width: CGFloat(activeConfig.strokeWidth),
                     colorHexRGBA: activeConfig.colorHexRGBA,
-                    opacity: activeConfig.opacity
+                    opacity: activeConfig.opacity,
+                    lineStyle: extOpts.lineStyle
                 )
             )
         case .pen, .highlighter, .text, .eraser:
             break
         }
     }
-    private func handleShapeDragEnded(_ value: DragGesture.Value) {
-        if value.translation.length < 2 {
+    private func handleShapeDragEnded(translation: CGSize) {
+        if translation.length < 2 {
             return
         }
         guard let previewElement else { return }
@@ -507,7 +713,7 @@ private final class OverlayViewModel: ObservableObject {
     private func syncSceneState() {
         sceneElements = scene.elements
         textItems = scene.elements.compactMap { element in
-            guard case let .text(text, center, fontSize, colorHexRGBA, opacity) = element.kind else {
+            guard case let .text(text, center, fontSize, colorHexRGBA, opacity, fontDesign) = element.kind else {
                 return nil
             }
             return OverlayTextItem(
@@ -516,7 +722,8 @@ private final class OverlayViewModel: ObservableObject {
                 center: center,
                 fontSize: fontSize,
                 colorHexRGBA: colorHexRGBA,
-                opacity: opacity
+                opacity: opacity,
+                fontDesign: fontDesign
             )
         }
     }
@@ -524,66 +731,100 @@ private final class OverlayViewModel: ObservableObject {
         radialCollapseTask?.cancel()
         radialCollapseTask = nil
     }
-    private func snapToNearestEdge(point: CGPoint, bounds: CGSize) -> CGPoint {
-        let leftDistance = point.x
-        let rightDistance = bounds.width - point.x
-        if leftDistance < rightDistance {
-            return CGPoint(x: radialEdgeInset, y: point.y)
+}
+private struct OverlayTextField: NSViewRepresentable {
+    @Binding var text: String
+    let font: NSFont
+    let color: NSColor
+    let onCommit: () -> Void
+
+    func makeNSView(context: Context) -> NSTextField {
+        let field = NSTextField(string: text)
+        field.isBordered = false
+        field.isBezeled = false
+        field.drawsBackground = false
+        field.focusRingType = .none
+        field.isEditable = true
+        field.isSelectable = true
+        field.font = font
+        field.textColor = color
+        field.alignment = .center
+        field.delegate = context.coordinator
+        DispatchQueue.main.async {
+            field.window?.makeFirstResponder(field)
         }
-        return CGPoint(x: max(radialEdgeInset, bounds.width - radialEdgeInset), y: point.y)
+        return field
+    }
+
+    func updateNSView(_ nsView: NSTextField, context: Context) {
+        nsView.font = font
+        nsView.textColor = color
+        if nsView.stringValue != text { nsView.stringValue = text }
+    }
+
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        var parent: OverlayTextField
+        init(_ parent: OverlayTextField) { self.parent = parent }
+        func controlTextDidChange(_ n: Notification) {
+            guard let f = n.object as? NSTextField else { return }
+            parent.text = f.stringValue
+        }
+        func control(_ control: NSControl, textView: NSTextView, doCommandBy sel: Selector) -> Bool {
+            if sel == #selector(NSResponder.insertNewline(_:)) { parent.onCommit(); return true }
+            return false
+        }
     }
 }
+
 private struct OverlayRootView: View {
     @ObservedObject var viewModel: OverlayViewModel
-    @FocusState private var isTextDraftFocused: Bool
+    let coordinateTransformer: DisplayCoordinateTransformer
     var body: some View {
         GeometryReader { proxy in
             ZStack(alignment: .topLeading) {
                 Color.clear
-                    .contentShape(Rectangle())
-                    .gesture(
-                        DragGesture(minimumDistance: 0)
-                            .onChanged { value in
-                                viewModel.handleDragChanged(value)
-                            }
-                            .onEnded { value in
-                                viewModel.handleDragEnded(value)
-                            }
-                    )
                 Canvas { context, _ in
                     for element in viewModel.sceneElements {
-                        render(element: element, in: &context)
+                        guard let localElement = localElement(for: element) else {
+                            continue
+                        }
+                        render(element: localElement, in: &context)
                     }
                     if let previewElement = viewModel.previewElement {
-                        render(element: previewElement, in: &context)
+                        if let localPreviewElement = localElement(for: previewElement) {
+                            render(element: localPreviewElement, in: &context)
+                        }
                     }
                 }
                 ForEach(viewModel.textItems) { item in
-                    Text(item.text)
-                        .font(.system(size: item.fontSize, weight: .semibold))
-                        .foregroundStyle(Color(hexRGBA: item.colorHexRGBA).opacity(item.opacity))
-                        .position(x: item.center.x, y: item.center.y)
-                        .allowsHitTesting(false)
+                    if coordinateTransformer.displayFrame.contains(item.center) {
+                        let localCenter = coordinateTransformer.globalPointToLocal(item.center)
+                        Text(item.text)
+                            .font(.system(size: item.fontSize, weight: .semibold, design: item.fontDesign.fontDesign))
+                            .foregroundStyle(Color(hexRGBA: item.colorHexRGBA).opacity(item.opacity))
+                            .position(x: localCenter.x, y: localCenter.y)
+                            .allowsHitTesting(false)
+                    }
                 }
-                if let textDraft = viewModel.textDraft {
-                    TextField("Type text", text: Binding(
-                        get: { viewModel.textDraft?.text ?? "" },
-                        set: { viewModel.textDraft?.text = $0 }
-                    ))
-                    .font(.system(size: CGFloat(viewModel.activeConfig.strokeWidth), weight: .semibold))
-                    .textFieldStyle(.plain)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 4)
-                    .background(.black.opacity(0.35), in: RoundedRectangle(cornerRadius: 6, style: .continuous))
-                    .foregroundStyle(Color(hexRGBA: viewModel.activeConfig.colorHexRGBA).opacity(viewModel.activeConfig.opacity))
-                    .position(x: textDraft.center.x, y: textDraft.center.y)
-                    .focused($isTextDraftFocused)
-                    .onSubmit {
-                        viewModel.commitTextDraft()
-                    }
-                    .onAppear {
-                        isTextDraftFocused = true
-                    }
+                if let textDraft = viewModel.textDraft, coordinateTransformer.displayFrame.contains(textDraft.center) {
+                    let fontSize = CGFloat(viewModel.activeConfig.strokeWidth)
+                    let nsColor = NSColor(Color(hexRGBA: viewModel.activeConfig.colorHexRGBA).opacity(viewModel.activeConfig.opacity))
+                    OverlayTextField(
+                        text: Binding(
+                            get: { viewModel.textDraft?.text ?? "" },
+                            set: { viewModel.textDraft?.text = $0 }
+                        ),
+                        font: .systemFont(ofSize: fontSize, weight: .semibold),
+                        color: nsColor,
+                        onCommit: { viewModel.commitTextDraft() }
+                    )
+                    .frame(width: 300, height: fontSize * 1.5)
+                    .position(
+                        x: coordinateTransformer.globalPointToLocal(textDraft.center).x,
+                        y: coordinateTransformer.globalPointToLocal(textDraft.center).y
+                    )
                 }
                 HUDView(
                     text: viewModel.hudText,
@@ -595,42 +836,128 @@ private struct OverlayRootView: View {
                     RadialControlView(viewModel: viewModel, availableSize: proxy.size)
                 }
             }
+            .coordinateSpace(name: "overlay")
         }
         .ignoresSafeArea()
         .opacity(viewModel.isOverlayVisible ? 1 : 0)
         .allowsHitTesting(viewModel.isOverlayVisible)
         .animation(.easeInOut(duration: 0.12), value: viewModel.isOverlayVisible)
     }
+    private func localElement(for element: OverlaySceneElement) -> OverlaySceneElement? {
+        switch element.kind {
+        case let .stroke(points, width, colorHexRGBA, opacity, lineStyle):
+            let globalBounds = points.boundingRect
+            guard coordinateTransformer.displayFrame.intersects(globalBounds) else { return nil }
+            return OverlaySceneElement(
+                id: element.id,
+                kind: .stroke(
+                    points: points.map { coordinateTransformer.globalPointToLocal($0) },
+                    width: width,
+                    colorHexRGBA: colorHexRGBA,
+                    opacity: opacity,
+                    lineStyle: lineStyle
+                )
+            )
+        case let .arrow(start, end, width, colorHexRGBA, opacity, lineStyle, arrowStyle):
+            let boundsPadding = max(width, OverlayGeometry.arrowHeadLength)
+            let globalBounds = CGRect(
+                x: min(start.x, end.x),
+                y: min(start.y, end.y),
+                width: abs(start.x - end.x),
+                height: abs(start.y - end.y)
+            ).insetBy(dx: -boundsPadding, dy: -boundsPadding)
+            guard coordinateTransformer.displayFrame.intersects(globalBounds) else { return nil }
+            return OverlaySceneElement(
+                id: element.id,
+                kind: .arrow(
+                    start: coordinateTransformer.globalPointToLocal(start),
+                    end: coordinateTransformer.globalPointToLocal(end),
+                    width: width,
+                    colorHexRGBA: colorHexRGBA,
+                    opacity: opacity,
+                    lineStyle: lineStyle,
+                    arrowStyle: arrowStyle
+                )
+            )
+        case let .rectangle(rect, width, colorHexRGBA, opacity, lineStyle):
+            guard coordinateTransformer.displayFrame.intersects(rect) else { return nil }
+            return OverlaySceneElement(
+                id: element.id,
+                kind: .rectangle(
+                    rect: coordinateTransformer.globalRectToLocal(rect),
+                    width: width,
+                    colorHexRGBA: colorHexRGBA,
+                    opacity: opacity,
+                    lineStyle: lineStyle
+                )
+            )
+        case let .ellipse(rect, width, colorHexRGBA, opacity, lineStyle):
+            guard coordinateTransformer.displayFrame.intersects(rect) else { return nil }
+            return OverlaySceneElement(
+                id: element.id,
+                kind: .ellipse(
+                    rect: coordinateTransformer.globalRectToLocal(rect),
+                    width: width,
+                    colorHexRGBA: colorHexRGBA,
+                    opacity: opacity,
+                    lineStyle: lineStyle
+                )
+            )
+        case let .text(text, center, fontSize, colorHexRGBA, opacity, fontDesign):
+            guard coordinateTransformer.displayFrame.contains(center) else { return nil }
+            return OverlaySceneElement(
+                id: element.id,
+                kind: .text(
+                    text: text,
+                    center: coordinateTransformer.globalPointToLocal(center),
+                    fontSize: fontSize,
+                    colorHexRGBA: colorHexRGBA,
+                    opacity: opacity,
+                    fontDesign: fontDesign
+                )
+            )
+        }
+    }
     private func render(element: OverlaySceneElement, in context: inout GraphicsContext) {
         switch element.kind {
-        case let .stroke(points, width, colorHexRGBA, opacity):
+        case let .stroke(points, width, colorHexRGBA, opacity, lineStyle):
             let path = makeStrokePath(points: points)
             context.stroke(
                 path,
                 with: .color(Color(hexRGBA: colorHexRGBA).opacity(opacity)),
-                style: StrokeStyle(lineWidth: width, lineCap: .round, lineJoin: .round)
+                style: makeStrokeStyle(width: width, lineStyle: lineStyle, cap: .round, join: .round)
             )
-        case let .arrow(start, end, width, colorHexRGBA, opacity):
-            let path = makeArrowPath(start: start, end: end)
+        case let .arrow(start, end, width, colorHexRGBA, opacity, lineStyle, arrowStyle):
+            let path = makeArrowPath(start: start, end: end, arrowStyle: arrowStyle)
             context.stroke(
                 path,
                 with: .color(Color(hexRGBA: colorHexRGBA).opacity(opacity)),
-                style: StrokeStyle(lineWidth: width, lineCap: .round, lineJoin: .round)
+                style: makeStrokeStyle(width: width, lineStyle: lineStyle, cap: .round, join: .round)
             )
-        case let .rectangle(rect, width, colorHexRGBA, opacity):
+        case let .rectangle(rect, width, colorHexRGBA, opacity, lineStyle):
             context.stroke(
                 Path(rect),
                 with: .color(Color(hexRGBA: colorHexRGBA).opacity(opacity)),
-                style: StrokeStyle(lineWidth: width, lineCap: .round, lineJoin: .round)
+                style: makeStrokeStyle(width: width, lineStyle: lineStyle, cap: .round, join: .round)
             )
-        case let .ellipse(rect, width, colorHexRGBA, opacity):
+        case let .ellipse(rect, width, colorHexRGBA, opacity, lineStyle):
             context.stroke(
                 Path(ellipseIn: rect),
                 with: .color(Color(hexRGBA: colorHexRGBA).opacity(opacity)),
-                style: StrokeStyle(lineWidth: width, lineCap: .round, lineJoin: .round)
+                style: makeStrokeStyle(width: width, lineStyle: lineStyle, cap: .round, join: .round)
             )
         case .text:
             break
+        }
+    }
+    private func makeStrokeStyle(width: CGFloat, lineStyle: LineStyle, cap: CGLineCap = .round, join: CGLineJoin = .round) -> StrokeStyle {
+        switch lineStyle {
+        case .solid:
+            return StrokeStyle(lineWidth: width, lineCap: cap, lineJoin: join)
+        case .dotted:
+            return StrokeStyle(lineWidth: width, lineCap: .round, lineJoin: join, dash: [width * 0.1, width * 2.5])
+        case .dashed:
+            return StrokeStyle(lineWidth: width, lineCap: .butt, lineJoin: join, dash: [width * 3, width * 1.5])
         }
     }
     private func makeStrokePath(points: [CGPoint]) -> Path {
@@ -644,27 +971,43 @@ private struct OverlayRootView: View {
         }
         return path
     }
-    private func makeArrowPath(start: CGPoint, end: CGPoint) -> Path {
+    private func makeArrowPath(start: CGPoint, end: CGPoint, arrowStyle: ArrowStyle) -> Path {
         var path = Path()
         path.move(to: start)
         path.addLine(to: end)
-        let angle = atan2(end.y - start.y, end.x - start.x)
-        let arrowLength: CGFloat = 18
+        let forwardAngle = atan2(end.y - start.y, end.x - start.x)
+        let arrowLength = OverlayGeometry.arrowHeadLength
         let arrowAngle: CGFloat = .pi / 7
-        let leftPoint = CGPoint(
-            x: end.x - arrowLength * cos(angle - arrowAngle),
-            y: end.y - arrowLength * sin(angle - arrowAngle)
-        )
-        let rightPoint = CGPoint(
-            x: end.x - arrowLength * cos(angle + arrowAngle),
-            y: end.y - arrowLength * sin(angle + arrowAngle)
-        )
+        // Arrowhead at end
         path.move(to: end)
-        path.addLine(to: leftPoint)
+        path.addLine(to: CGPoint(
+            x: end.x - arrowLength * cos(forwardAngle - arrowAngle),
+            y: end.y - arrowLength * sin(forwardAngle - arrowAngle)
+        ))
         path.move(to: end)
-        path.addLine(to: rightPoint)
+        path.addLine(to: CGPoint(
+            x: end.x - arrowLength * cos(forwardAngle + arrowAngle),
+            y: end.y - arrowLength * sin(forwardAngle + arrowAngle)
+        ))
+        // Second arrowhead at start for double style
+        if arrowStyle == .double {
+            let reverseAngle = forwardAngle + .pi
+            path.move(to: start)
+            path.addLine(to: CGPoint(
+                x: start.x - arrowLength * cos(reverseAngle - arrowAngle),
+                y: start.y - arrowLength * sin(reverseAngle - arrowAngle)
+            ))
+            path.move(to: start)
+            path.addLine(to: CGPoint(
+                x: start.x - arrowLength * cos(reverseAngle + arrowAngle),
+                y: start.y - arrowLength * sin(reverseAngle + arrowAngle)
+            ))
+        }
         return path
     }
+}
+private enum OverlayGeometry {
+    static let arrowHeadLength: CGFloat = 18
 }
 private struct HUDView: View {
     let text: String
@@ -688,10 +1031,9 @@ private struct HUDView: View {
 private struct RadialControlView: View {
     @ObservedObject var viewModel: OverlayViewModel
     let availableSize: CGSize
-    @State private var dragStartCenter: CGPoint?
+    @State private var dragGrabOffset: CGPoint?
     private let centerSize: CGFloat = 44
     private let primaryRadius: CGFloat = 88
-    private let secondaryRadius: CGFloat = 132
     var body: some View {
         ZStack {
             if viewModel.isRadialExpanded {
@@ -701,47 +1043,57 @@ private struct RadialControlView: View {
                     action: viewModel.selectPrimaryItem
                 )
             }
-            if viewModel.isRadialExpanded, !viewModel.radialSecondaryItems.isEmpty {
-                ringButtons(
-                    items: viewModel.radialSecondaryItems,
-                    radius: secondaryRadius,
-                    action: viewModel.selectSecondaryItem
-                )
-            }
-            Button {
-                if viewModel.isRadialExpanded {
-                    viewModel.collapseRadialControl()
-                } else {
-                    viewModel.activateRadialControl()
-                }
-            } label: {
-                ZStack {
-                    Circle()
-                        .fill(.black.opacity(0.75))
-                    Image(systemName: viewModel.isRadialExpanded ? "xmark" : "circle.grid.2x2.fill")
-                        .foregroundStyle(.white)
-                }
-                .frame(width: centerSize, height: centerSize)
-            }
-            .buttonStyle(.plain)
-            .help("Radial Control")
-            .simultaneousGesture(
-                DragGesture(minimumDistance: 0)
-                    .onChanged { value in
-                        viewModel.activateRadialControl()
-                        if dragStartCenter == nil {
-                            dragStartCenter = viewModel.radialCenter
-                        }
-                        let startCenter = dragStartCenter ?? viewModel.radialCenter
-                        let nextPoint = CGPoint(
-                            x: startCenter.x + value.translation.width,
-                            y: startCenter.y + value.translation.height
-                        )
-                        viewModel.moveRadialControl(to: nextPoint, in: availableSize)
+            if viewModel.isOptionsOpen, let tool = viewModel.selectedToolForOptions {
+                ToolOptionsPanelView(viewModel: viewModel, tool: tool)
+                    .offset(y: primaryRadius + 72)
+                    .onHover { isHovering in
+                        if isHovering { viewModel.activateRadialControl() }
                     }
-                    .onEnded { _ in
-                        dragStartCenter = nil
-                        viewModel.scheduleRadialCollapse()
+            }
+            ZStack {
+                Circle()
+                    .fill(.black.opacity(0.75))
+                Image(systemName: centerIconName)
+                    .foregroundStyle(.white)
+            }
+            .frame(width: centerSize, height: centerSize)
+            .help("Radial Control")
+            .gesture(
+                DragGesture(minimumDistance: 0, coordinateSpace: .named("overlay"))
+                    .onChanged { value in
+                        if dragGrabOffset == nil {
+                            dragGrabOffset = CGPoint(
+                                x: value.startLocation.x - viewModel.radialCenter.x,
+                                y: value.startLocation.y - viewModel.radialCenter.y
+                            )
+                        }
+                        guard value.translation.length > 4 else { return }
+                        viewModel.activateRadialControl()
+                        let offset = dragGrabOffset ?? .zero
+                        viewModel.moveRadialControl(
+                            to: CGPoint(
+                                x: value.location.x - offset.x,
+                                y: value.location.y - offset.y
+                            ),
+                            in: availableSize
+                        )
+                    }
+                    .onEnded { value in
+                        let wasDrag = value.translation.length > 4
+                        dragGrabOffset = nil
+                        if wasDrag {
+                            viewModel.scheduleRadialCollapse()
+                        } else {
+                            if viewModel.isRadialExpanded {
+                                if let tool = viewModel.selectedToolForOptions, tool.hasConfigurableOptions {
+                                    viewModel.toggleOptions()
+                                } else {
+                                    viewModel.collapseRadialControl()
+                                }
+                            } else {
+                                viewModel.activateRadialControl()
+                            }
+                        }
                     }
             )
         }
@@ -754,6 +1106,15 @@ private struct RadialControlView: View {
             }
         }
     }
+
+    private var centerIconName: String {
+        if !viewModel.isRadialExpanded { return "circle.grid.2x2.fill" }
+        if let tool = viewModel.selectedToolForOptions, tool.hasConfigurableOptions {
+            return viewModel.isOptionsOpen ? "xmark" : "paintpalette"
+        }
+        return "xmark"
+    }
+
     private func ringButtons(
         items: [OverlayViewModel.RadialItem],
         radius: CGFloat,
@@ -781,7 +1142,208 @@ private struct RadialControlView: View {
         }
     }
 }
+
+private struct ToolOptionsPanelView: View {
+    @ObservedObject var viewModel: OverlayViewModel
+    let tool: ToolKind
+
+    private let palette = ["#FF3B30FF", "#0A84FFFF", "#34C759FF", "#FFD60AFF", "#AF52DEFF", "#FFFFFFFF", "#FF9500FF"]
+
+    var body: some View {
+        VStack(spacing: 10) {
+            Text(tool.rawValue.capitalized + " Options")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(.white.opacity(0.8))
+
+            colorSwatches
+
+            if tool != .text {
+                thicknessRow
+            }
+
+            if tool.hasLineStyleOption {
+                lineStyleRow
+            }
+
+            if tool == .arrow {
+                arrowStyleRow
+            }
+
+            if tool == .text {
+                fontDesignRow
+                fontSizeRow
+            }
+
+            HStack(spacing: 8) {
+                Button("Cancel") { viewModel.cancelOptions() }
+                    .buttonStyle(OptionsPillButtonStyle(isPrimary: false))
+                Button("OK") { viewModel.confirmOptions() }
+                    .buttonStyle(OptionsPillButtonStyle(isPrimary: true))
+            }
+        }
+        .padding(12)
+        .frame(width: 212)
+        .background(.black.opacity(0.88), in: RoundedRectangle(cornerRadius: 12))
+        .fixedSize(horizontal: false, vertical: true)
+    }
+
+    private var colorSwatches: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Color")
+                .font(.system(size: 10))
+                .foregroundStyle(.white.opacity(0.55))
+            HStack(spacing: 6) {
+                ForEach(palette, id: \.self) { hex in
+                    Button {
+                        viewModel.pendingConfig.colorHexRGBA = hex
+                    } label: {
+                        Circle()
+                            .fill(Color(hexRGBA: hex))
+                            .frame(width: 22, height: 22)
+                            .overlay(
+                                Circle()
+                                    .stroke(.white, lineWidth: viewModel.pendingConfig.colorHexRGBA == hex ? 2 : 0)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var thicknessRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Thickness: \(Int(viewModel.pendingConfig.strokeWidth))")
+                .font(.system(size: 10))
+                .foregroundStyle(.white.opacity(0.55))
+            Slider(value: $viewModel.pendingConfig.strokeWidth, in: 1...48, step: 1)
+                .tint(.white)
+        }
+    }
+
+    private var fontSizeRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Size: \(Int(viewModel.pendingConfig.strokeWidth))")
+                .font(.system(size: 10))
+                .foregroundStyle(.white.opacity(0.55))
+            Slider(value: $viewModel.pendingConfig.strokeWidth, in: 10...72, step: 2)
+                .tint(.white)
+        }
+    }
+
+    private var lineStyleRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Line Style")
+                .font(.system(size: 10))
+                .foregroundStyle(.white.opacity(0.55))
+            HStack(spacing: 4) {
+                ForEach(LineStyle.allCases, id: \.self) { style in
+                    Button {
+                        viewModel.pendingExtendedOptions.lineStyle = style
+                    } label: {
+                        Text(style.displayName)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 4)
+                            .background(
+                                viewModel.pendingExtendedOptions.lineStyle == style
+                                    ? Color.accentColor
+                                    : Color.white.opacity(0.15),
+                                in: RoundedRectangle(cornerRadius: 6)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private var arrowStyleRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Arrow")
+                .font(.system(size: 10))
+                .foregroundStyle(.white.opacity(0.55))
+            HStack(spacing: 4) {
+                ForEach(ArrowStyle.allCases, id: \.self) { style in
+                    Button {
+                        viewModel.pendingExtendedOptions.arrowStyle = style
+                    } label: {
+                        Text(style.displayName)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 4)
+                            .background(
+                                viewModel.pendingExtendedOptions.arrowStyle == style
+                                    ? Color.accentColor
+                                    : Color.white.opacity(0.15),
+                                in: RoundedRectangle(cornerRadius: 6)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+
+    private var fontDesignRow: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("Font")
+                .font(.system(size: 10))
+                .foregroundStyle(.white.opacity(0.55))
+            HStack(spacing: 4) {
+                ForEach(TextFontDesign.allCases, id: \.self) { design in
+                    Button {
+                        viewModel.pendingExtendedOptions.textFontDesign = design
+                    } label: {
+                        Text(design.displayName)
+                            .font(.system(size: 11))
+                            .foregroundStyle(.white)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 4)
+                            .background(
+                                viewModel.pendingExtendedOptions.textFontDesign == design
+                                    ? Color.accentColor
+                                    : Color.white.opacity(0.15),
+                                in: RoundedRectangle(cornerRadius: 6)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+    }
+}
+
+private struct OptionsPillButtonStyle: ButtonStyle {
+    let isPrimary: Bool
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .font(.system(size: 12, weight: isPrimary ? .semibold : .regular))
+            .foregroundStyle(.white)
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 6)
+            .background(
+                isPrimary
+                    ? Color.accentColor.opacity(configuration.isPressed ? 0.7 : 1)
+                    : Color.white.opacity(configuration.isPressed ? 0.2 : 0.12),
+                in: RoundedRectangle(cornerRadius: 8)
+            )
+    }
+}
+
 private extension ToolKind {
+    var hasConfigurableOptions: Bool {
+        self != .eraser
+    }
+    var hasLineStyleOption: Bool {
+        switch self {
+        case .pen, .highlighter, .arrow, .rectangle, .ellipse: return true
+        case .text, .eraser: return false
+        }
+    }
     var shortcutCommandID: ShortcutCommandID {
         switch self {
         case .pen: return .selectPen
@@ -811,6 +1373,8 @@ private extension OverlayAction {
             return .increaseStroke
         case .decreaseStroke:
             return .decreaseStroke
+        case .applyToolOptions:
+            return .toggleAnnotation // not displayed in radial tooltip; fallback
         }
     }
     var id: String {
@@ -829,6 +1393,8 @@ private extension OverlayAction {
             return "increaseStroke"
         case .decreaseStroke:
             return "decreaseStroke"
+        case let .applyToolOptions(tool, _, _):
+            return "applyToolOptions.\(tool.rawValue)"
         }
     }
     var label: String {
@@ -847,6 +1413,8 @@ private extension OverlayAction {
             return "Increase Stroke"
         case .decreaseStroke:
             return "Decrease Stroke"
+        case let .applyToolOptions(tool, _, _):
+            return "\(tool.rawValue.capitalized) Options"
         }
     }
 }
@@ -874,6 +1442,9 @@ private extension OverlayViewModel.RadialItem {
             case .selectTool:
                 assertionFailure("selectTool should be represented as RadialItem.tool, not RadialItem.action")
                 return "pencil"
+            case .applyToolOptions:
+                assertionFailure("applyToolOptions should not appear as a radial item")
+                return "gear"
             }
         }
     }
@@ -914,16 +1485,16 @@ private extension ShortcutKey {
 private extension OverlaySceneElement {
     func hitTest(_ point: CGPoint) -> Bool {
         switch kind {
-        case let .stroke(points, width, _, _):
+        case let .stroke(points, width, _, _, _):
             return point.distanceToPolyline(points) <= max(width * 0.5, 8)
-        case let .arrow(start, end, width, _, _):
+        case let .arrow(start, end, width, _, _, _, _):
             return point.distanceToSegment(from: start, to: end) <= max(width * 0.6, 10)
-        case let .rectangle(rect, width, _, _):
+        case let .rectangle(rect, width, _, _, _):
             return rect.insetBy(dx: -max(width, 10), dy: -max(width, 10)).contains(point)
-        case let .ellipse(rect, width, _, _):
+        case let .ellipse(rect, width, _, _, _):
             let expanded = rect.insetBy(dx: -max(width, 10), dy: -max(width, 10))
             return expanded.contains(point)
-        case let .text(text, center, fontSize, _, _):
+        case let .text(text, center, fontSize, _, _, _):
             let bounds = CGRect(textCenter: center, text: text, fontSize: fontSize)
             return bounds.contains(point)
         }
@@ -958,11 +1529,27 @@ private extension CGPoint {
         return hypot(x - projection.x, y - projection.y)
     }
 }
+private extension Array where Element == CGPoint {
+    var boundingRect: CGRect {
+        guard let first = first else { return .zero }
+        var minX = first.x
+        var maxX = first.x
+        var minY = first.y
+        var maxY = first.y
+        for point in dropFirst() {
+            minX = Swift.min(minX, point.x)
+            maxX = Swift.max(maxX, point.x)
+            minY = Swift.min(minY, point.y)
+            maxY = Swift.max(maxY, point.y)
+        }
+        return CGRect(x: minX, y: minY, width: maxX - minX, height: maxY - minY)
+    }
+}
 private extension CGRect {
     static func normalized(from first: CGPoint, to second: CGPoint) -> CGRect {
         CGRect(
-            x: min(first.x, second.x),
-            y: min(first.y, second.y),
+            x: Swift.min(first.x, second.x),
+            y: Swift.min(first.y, second.y),
             width: abs(first.x - second.x),
             height: abs(first.y - second.y)
         )
@@ -1012,5 +1599,14 @@ private extension Color {
             blue: Double(b) / 255,
             opacity: Double(a) / 255
         )
+    }
+}
+private extension TextFontDesign {
+    var fontDesign: Font.Design {
+        switch self {
+        case .system: return .default
+        case .serif: return .serif
+        case .monospaced: return .monospaced
+        }
     }
 }

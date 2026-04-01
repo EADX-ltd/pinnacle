@@ -250,6 +250,36 @@ final class PinnacleSmokeTests: XCTestCase {
         XCTAssertEqual(harness.overlayService.clearAllInvocations, [true])
     }
 
+    func testApplyToolOptionsUpdatesToolStateAndPushesToOverlay() throws {
+        let harness = makeStoreHarness()
+        let newConfig = ToolConfig(colorHexRGBA: "#0A84FFFF", strokeWidth: 8, opacity: 0.9)
+        let newOptions = ToolExtendedOptions(lineStyle: .dashed, arrowStyle: .double, textFontDesign: .serif)
+
+        harness.overlayService.trigger(.applyToolOptions(.pen, newConfig, newOptions))
+
+        XCTAssertEqual(harness.store.toolState.configs[.pen], newConfig)
+        XCTAssertEqual(harness.store.toolState.extendedOptions[.pen], newOptions)
+        XCTAssertEqual(harness.overlayService.updatedToolState?.configs[.pen], newConfig)
+    }
+
+    func testToolStateDefaultIncludesExtendedOptionsForAllTools() {
+        let state = ToolState.default
+
+        for tool in ToolKind.allCases {
+            XCTAssertNotNil(state.extendedOptions[tool], "Missing extendedOptions for \(tool)")
+            XCTAssertEqual(state.extendedOptions[tool]?.lineStyle, .solid)
+            XCTAssertEqual(state.extendedOptions[tool]?.arrowStyle, .single)
+            XCTAssertEqual(state.extendedOptions[tool]?.textFontDesign, .system)
+        }
+    }
+
+    func testToolExtendedOptionsDefaultValues() {
+        let options = ToolExtendedOptions.default
+        XCTAssertEqual(options.lineStyle, .solid)
+        XCTAssertEqual(options.arrowStyle, .single)
+        XCTAssertEqual(options.textFontDesign, .system)
+    }
+
     func testOverlaySceneModelUndoRedoSupportsMixedElementHistory() {
         var scene = OverlaySceneModel()
 
@@ -257,20 +287,23 @@ final class PinnacleSmokeTests: XCTestCase {
             points: [CGPoint(x: 10, y: 10), CGPoint(x: 20, y: 20)],
             width: 4,
             colorHexRGBA: "#FF3B30FF",
-            opacity: 1
+            opacity: 1,
+            lineStyle: .solid
         ))
         let rectangle = OverlaySceneElement(kind: .rectangle(
             rect: CGRect(x: 40, y: 40, width: 100, height: 60),
             width: 4,
             colorHexRGBA: "#34C759FF",
-            opacity: 1
+            opacity: 1,
+            lineStyle: .solid
         ))
         let text = OverlaySceneElement(kind: .text(
             text: "Title",
             center: CGPoint(x: 150, y: 140),
             fontSize: 24,
             colorHexRGBA: "#FFFFFFFF",
-            opacity: 1
+            opacity: 1,
+            fontDesign: .system
         ))
 
         scene.commit(stroke)
@@ -298,7 +331,9 @@ final class PinnacleSmokeTests: XCTestCase {
             end: CGPoint(x: 80, y: 80),
             width: 4,
             colorHexRGBA: "#0A84FFFF",
-            opacity: 1
+            opacity: 1,
+            lineStyle: .solid,
+            arrowStyle: .single
         ))
         scene.commit(arrow)
         XCTAssertEqual(scene.elements.count, 1)
@@ -316,13 +351,15 @@ final class PinnacleSmokeTests: XCTestCase {
             rect: CGRect(x: 10, y: 10, width: 80, height: 80),
             width: 4,
             colorHexRGBA: "#34C759FF",
-            opacity: 1
+            opacity: 1,
+            lineStyle: .solid
         ))
         let upper = OverlaySceneElement(kind: .ellipse(
             rect: CGRect(x: 20, y: 20, width: 80, height: 80),
             width: 4,
             colorHexRGBA: "#AF52DEFF",
-            opacity: 1
+            opacity: 1,
+            lineStyle: .solid
         ))
         scene.commit(lower)
         scene.commit(upper)
@@ -330,6 +367,100 @@ final class PinnacleSmokeTests: XCTestCase {
         let removed = scene.eraseTopmostElement(at: CGPoint(x: 40, y: 40))
         XCTAssertTrue(removed)
         XCTAssertEqual(scene.elements.map(\.id), [lower.id])
+    }
+
+    func testOverlaySceneElementLineStyleAndArrowStyleStoredPerElement() {
+        let dashedArrow = OverlaySceneElement(kind: .arrow(
+            start: CGPoint(x: 0, y: 0),
+            end: CGPoint(x: 100, y: 0),
+            width: 3,
+            colorHexRGBA: "#0A84FFFF",
+            opacity: 1,
+            lineStyle: .dashed,
+            arrowStyle: .double
+        ))
+        if case let .arrow(_, _, _, _, _, lineStyle, arrowStyle) = dashedArrow.kind {
+            XCTAssertEqual(lineStyle, .dashed)
+            XCTAssertEqual(arrowStyle, .double)
+        } else {
+            XCTFail("Expected arrow element")
+        }
+
+        let dottedStroke = OverlaySceneElement(kind: .stroke(
+            points: [.zero, CGPoint(x: 50, y: 50)],
+            width: 4,
+            colorHexRGBA: "#FF3B30FF",
+            opacity: 1,
+            lineStyle: .dotted
+        ))
+        if case let .stroke(_, _, _, _, lineStyle) = dottedStroke.kind {
+            XCTAssertEqual(lineStyle, .dotted)
+        } else {
+            XCTFail("Expected stroke element")
+        }
+    }
+
+    func testOverlaySceneTextElementStoresFontDesign() {
+        let serifText = OverlaySceneElement(kind: .text(
+            text: "Hello",
+            center: CGPoint(x: 100, y: 100),
+            fontSize: 24,
+            colorHexRGBA: "#FFFFFFFF",
+            opacity: 1,
+            fontDesign: .serif
+        ))
+        if case let .text(_, _, _, _, _, fontDesign) = serifText.kind {
+            XCTAssertEqual(fontDesign, .serif)
+        } else {
+            XCTFail("Expected text element")
+        }
+    }
+
+    func testDisplayCoordinateTransformerRoundTripsPointForNegativeOriginDisplay() {
+        let transformer = DisplayCoordinateTransformer(
+            displayFrame: CGRect(x: -1920, y: 0, width: 1920, height: 1080)
+        )
+        let localPoint = CGPoint(x: 250, y: 400)
+
+        let globalPoint = transformer.localPointToGlobal(localPoint)
+        XCTAssertEqual(globalPoint.x, -1670, accuracy: 0.0001)
+        XCTAssertEqual(globalPoint.y, 400, accuracy: 0.0001)
+
+        let roundTrip = transformer.globalPointToLocal(globalPoint)
+        XCTAssertEqual(roundTrip.x, localPoint.x, accuracy: 0.0001)
+        XCTAssertEqual(roundTrip.y, localPoint.y, accuracy: 0.0001)
+    }
+
+    func testDisplayCoordinateTransformerConvertsRectsAcrossDisplays() {
+        let transformer = DisplayCoordinateTransformer(
+            displayFrame: CGRect(x: 1728, y: -200, width: 1728, height: 1117)
+        )
+        let localRect = CGRect(x: 100, y: 120, width: 400, height: 240)
+
+        let globalRect = transformer.localRectToGlobal(localRect)
+        XCTAssertEqual(globalRect.origin.x, 1828, accuracy: 0.0001)
+        XCTAssertEqual(globalRect.origin.y, -80, accuracy: 0.0001)
+        XCTAssertEqual(globalRect.size.width, 400, accuracy: 0.0001)
+        XCTAssertEqual(globalRect.size.height, 240, accuracy: 0.0001)
+
+        let roundTrip = transformer.globalRectToLocal(globalRect)
+        XCTAssertEqual(roundTrip.origin.x, localRect.origin.x, accuracy: 0.0001)
+        XCTAssertEqual(roundTrip.origin.y, localRect.origin.y, accuracy: 0.0001)
+        XCTAssertEqual(roundTrip.size.width, localRect.size.width, accuracy: 0.0001)
+        XCTAssertEqual(roundTrip.size.height, localRect.size.height, accuracy: 0.0001)
+    }
+
+    func testDisplayDescriptorPreservesMixedScaleAndIdentifier() {
+        let descriptor = DisplayDescriptor(
+            id: 42,
+            frame: CGRect(x: 0, y: 0, width: 1512, height: 982),
+            scaleFactor: 2
+        )
+
+        XCTAssertEqual(descriptor.id, 42)
+        XCTAssertEqual(descriptor.scaleFactor, 2, accuracy: 0.0001)
+        XCTAssertEqual(descriptor.frame.width, 1512, accuracy: 0.0001)
+        XCTAssertEqual(descriptor.frame.height, 982, accuracy: 0.0001)
     }
 }
 

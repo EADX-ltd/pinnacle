@@ -63,7 +63,7 @@ Out of scope for v1:
 - `MenuBarScene`: start/stop annotation, start/stop recording, quick tool select.
 - `SettingsScene`: shortcuts, colors, stroke widths, save location, behavior toggles.
 - `HUDOverlayView` (optional): small floating indicator for current tool/color with hover tooltip showing action name and key binding.
-- `RadialControlOverlay` (optional but recommended): compact center circle that expands to an outer donut of tools, with secondary donut options per selected tool.
+- `RadialControlOverlay` (optional but recommended): compact center circle that expands to a first donut ring of tools; tool options are shown in a contextual panel (no shared second ring).
 
 ### 4.2 App State and Domain
 - `AppSessionState`: `idle`, `annotating`, `recording`, `recordingAndAnnotating`, `paused`.
@@ -120,14 +120,21 @@ Non-goals:
 Behavior contract:
 - Available in annotation mode; toggleable by shortcut/menu.
 - Default state is a single small collapsed circle.
-- Clicking the center circle activates control.
-- Activated control expands tool actions into an outer donut ring around the center circle.
-- Clicking a tool expands a secondary donut ring with options for that tool.
-- Control deactivates 5 seconds after losing focus (pointer leaves control and no interaction continues).
+- Hovering the center circle activates control.
+- Activated control expands the first donut ring of tools around the center circle.
+- Hovering a tool in the first ring shows a tooltip with the tool name.
+- Clicking a tool selects it and replaces center `X` with an options-trigger icon (color-picker icon).
+- Clicking the options-trigger icon opens options for the selected tool in a panel below the first ring.
+- The options panel is anchored to the radial control and moves together with it.
+- Options panel uses explicit `OK` and `Cancel` actions.
+- `OK` applies changes and stores them as last-used settings for that tool.
+- `Cancel` discards pending changes and keeps previously saved settings.
+- Closing options (`OK` or `Cancel`) returns center icon to `X`.
+- Control deactivates after losing focus for more than 3 seconds.
 - On deactivation, control collapses back to the single small circle.
 - Draggable with edge snap and remembers last position.
 - Pass-through interaction outside control bounds.
-- Hovering an actionable item shows tooltip with command label and current key binding.
+- If a tool has no configurable options, options-trigger icon remains hidden/disabled for that tool.
 
 ## 5. Tooling Model
 
@@ -191,6 +198,19 @@ Implementation note:
 - Keep all shortcuts user-configurable in Settings.
 - Validate conflicts and reserve fallback defaults.
 
+## 5.4 Tool Options Matrix
+
+| Tool Group | Options | Modifier Behavior |
+|---|---|---|
+| `Circle`, `Rectangle`, `Highlighter`, `Pencil` | line thickness, color, line style (`solid`, `dotted`, `hyphen`) | Holding `Shift` constrains drawing: circle/ellipse -> perfect circle, rectangle -> square, pencil/highlighter -> straight line |
+| `Arrow` | single-sided/double-sided, color, line style (`solid`, `dotted`, `hyphen`) | Holding `Shift` draws straight arrows |
+| `Text` | font, color, size, background color (if supported), border style (if supported) | No additional modifier required |
+| Other tools | no options panel | N/A |
+
+Persistence rule:
+- If user has previously saved options for a tool, those are reused.
+- Otherwise, tool defaults from section `5.2` apply.
+
 ## 6. Core Data Contracts
 
 ```swift
@@ -250,19 +270,28 @@ struct ShortcutBinding: Codable {
 ### 7.5 Use Radial On-Screen Control
 1. User toggles radial control via shortcut or menu command.
 2. Overlay shows collapsed single-circle control at last saved position.
-3. Clicking the circle activates control and expands an outer donut of tools.
-4. Clicking a tool expands a second donut with tool-specific options.
-5. User picks tool/color/stroke or quick action (undo/redo/clear) from first or second donut.
-6. Selection dispatches command updates to `AppStore` and active overlay renderer/command stack.
-7. When focus is lost, a 5-second inactivity timer starts.
-8. If no new interaction occurs before timeout, control deactivates and collapses to the single-circle state.
+3. Hovering the center circle activates control and expands the first donut ring of tools.
+4. User clicks a tool to select it.
+5. Selection dispatches command updates to `AppStore` and active overlay renderer/command stack.
+6. If the selected tool supports options, user opens options via the center options-trigger icon.
+7. Options panel appears below the first ring and moves with the radial control.
+8. User confirms changes with `OK` or discards with `Cancel`.
+9. When focus is lost, a 3-second inactivity timer starts.
+10. If no new interaction occurs before timeout, control deactivates and collapses to the single-circle state.
 
-### 7.6 Hover HUD/Radial Item For Shortcut Tooltip
-1. User hovers a HUD or radial item.
-2. Overlay resolves mapped command and current shortcut binding.
-3. Tooltip appears near pointer with command label and key binding (example: `Pen (Ctrl+Opt+1)`).
-4. Tooltip hides on pointer leave or action execution.
-5. Tooltip content refreshes immediately after shortcut remap changes.
+### 7.6 Hover First-Ring Tool For Name Tooltip
+1. User hovers a tool in the first donut ring.
+2. Tooltip appears near pointer with tool name.
+3. Tooltip hides when pointer leaves the tool target.
+
+### 7.7 Open Tool Options Panel
+1. User selects a tool in the first ring.
+2. Center `X` is replaced by options-trigger icon (color-picker icon).
+3. User clicks options-trigger icon.
+4. Tool-specific options panel appears below the first ring, anchored to the control.
+5. User edits options and chooses `OK` or `Cancel`.
+6. `OK` applies and persists tool settings; `Cancel` discards edits.
+7. Panel closes and center icon returns to `X`.
 
 ## 8. Rendering Strategy
 - Store annotations as vector objects (`ShapeElement`, `TextElement`, `ArrowElement`).
@@ -292,7 +321,7 @@ The concrete, task-level execution board is `docs/IMPLEMENTATION_TASKS.md` and m
 - [x] Phase 2: Global shortcuts
 - [ ] Phase 3: Overlay engine (single display)
 - [x] Phase 4: Tool renderers + undo/redo
-- [ ] Phase 5: Multi-display support
+- [x] Phase 5: Multi-display support
 - [ ] Phase 6: Recording engine integration
 - [ ] Phase 7: Settings UI for shortcuts/colors
 - [ ] Phase 8: Persistence and output management
@@ -427,8 +456,9 @@ Every implementation phase must satisfy all gates below before being marked comp
 - Shortcuts and colors are configurable and persisted.
 - Permissions are handled with clear user guidance.
 - Optional radial on-screen control is usable, non-blocking, and configurable.
-- Hovering HUD/radial controls shows accurate key binding tooltips.
+- Hovering first-ring tools shows accurate tool-name tooltips.
 - Radial control supports keyboard-light workflow for tool/color/stroke and quick actions.
+- Per-tool options panel (below first ring) supports `OK`/`Cancel` and persistent per-tool settings.
 - All phase quality gates in section `11.3` are satisfied and documented.
 
 ## 13. Decision Log (Agent Must Update)
@@ -438,10 +468,14 @@ Every implementation phase must satisfy all gates below before being marked comp
 | YYYY-MM-DD | N | TBD | TBD | TBD |
 | 2026-03-31 | 0 | Introduced protocol-first service layer with `AppContainer` composition root and no-op/in-memory bootstrap implementations | Establishes strict module boundaries early while keeping Phase 0 startup stable and testable | Enables future phase services to swap concrete implementations without changing UI/domain contracts; adds runnable smoke-test target baseline |
 | 2026-03-31 | 0 | Updated protocol isolation contracts and preference serialization rules; reordered section 4 headings sequentially | Addresses concrete review findings for concurrency correctness, persistence safety, and document navigability | Prevents actor isolation leaks and non-codable preference writes; improves test signal quality and architecture readability |
+| 2026-04-01 | 3/4 | Re-scoped radial interaction to hover-activation and 3-second focus-loss timeout; replaced shared second ring with per-tool options panel below first ring | Existing interaction model produced redundant second ring behavior and did not match desired UX | Prioritizes a new corrective batch in Phase 3/4 before continuing to Phase 6+ |
+| 2026-04-01 | 3/4 | Implemented full corrective batch: hover→activate (3s collapse), no secondary ring, center-icon swap (paintpalette for configurable tools), ToolOptionsPanelView anchored below first ring with OK/Cancel, LineStyle/ArrowStyle/TextFontDesign domain enums, ToolExtendedOptions in ToolState, per-element line style and arrow style stored in OverlaySceneElement.Kind, double-headed arrow renderer, font design per text element, applyToolOptions OverlayAction round-tripped through AppStore | P3-T13/T07/T14/T15/T16/T17 and P4-T08/T09/T10/T11 all done; static review and new targeted tests cover model correctness, options routing, and scene undo/redo; xcodebuild unavailable (CommandLineTools); P3-T09 remains blocked on manual GUI checklist |
 | 2026-03-31 | 1 | Added `MenuBarExtra` app shell, introduced `AppStore` with `SessionMode`/`ToolState`, and centralized command dispatch via `CommandID` reducer for annotation and recording lifecycle | Establishes a deterministic, testable state transition core for UI and service orchestration while exposing real-time active-mode status in the menu bar | Completes Phase 1 deliverables and provides a stable base for Phase 2 shortcut routing; validation: transition tests added, but `xcodebuild` execution is currently blocked in this environment because full Xcode is not configured |
 | 2026-03-31 | 2 | Added a codable shortcut model/default keymap, conflict fallback validator, and `AppKitShortcutService` for local/global key event routing; wired shortcut registration and persisted bindings through `AppStore` | Delivers Phase 2 global shortcut routing with deterministic command mapping and a safe fallback when user bindings conflict | Completes Phase 2 deliverables and enables shortcut-driven lifecycle/tool selection; validation: new shortcut tests added but `xcodebuild` execution remains blocked in this environment (active developer directory is CommandLineTools), known limitation: undo/redo/clear/color/stroke/radial command handlers are currently intentional no-ops until later phases |
 | 2026-03-31 | 3 | Implemented single-display AppKit overlay engine with transparent top-level panel, pointer-driven pen/highlighter vector strokes, active-tool HUD, and radial control (collapsed/expanded/secondary rings, shortcut tooltips, focus-loss timeout collapse) wired through `OverlayService` and `AppStore` command dispatch | Delivers the core Phase 3 runtime interaction loop while preserving module boundaries (`AppStore` <-> `OverlayService`) and enabling later undo/redo integration without UI rewrites | Phase 3 remains in progress: P3-T01..P3-T08 and P3-T11..P3-T14 are implemented; P3-T09 remains blocked on manual GUI checklist. P3-T10 was completed in Phase 4 after undo/redo/clear integration. Validation: added overlay wiring smoke tests; `xcodebuild` could not run in this environment because active developer directory is CommandLineTools |
 | 2026-03-31 | 4 | Introduced a unified overlay scene-element model with shape/text renderers, eraser hit-removal, and undo/redo/clear command stack; wired `AppStore` commands to concrete overlay operations | Completes Phase 4 deliverables while preserving Phase 3 overlay/radial UI and keeping command orchestration in `AppStore` with rendering state isolated to the overlay engine | Phase 4 is complete and P3-T10 quick actions are now active through dispatcher -> overlay command execution. Validation: added mixed-history scene model tests and AppStore-to-overlay command routing tests; `xcodebuild` still cannot run in this environment because active developer directory is CommandLineTools. Known limitation: clear-all confirmation UX remains a follow-up UI behavior for later settings/polish phases. |
+| 2026-03-31 | 5 | Reworked overlay runtime to track displays dynamically, render one panel per active display, and use a shared global-space scene model with explicit `DisplayCoordinateTransformer` conversions for per-screen rendering and input; tightened radial task cancellation handling and moved screen observer teardown out of deinit | Delivers Phase 5 multi-display behavior while preserving service boundaries and fixing edge cases for negative-origin displays, mixed-scale layouts, and arrowhead clipping near display boundaries | Phase 5 is complete (`P5-T01..P5-T05` done). Validation: added coordinate conversion tests (negative-origin + mixed-scale cases) and static verification of multi-panel synchronization; `xcodebuild` remains unavailable in this environment because active developer directory is CommandLineTools. Residual risk: attach/detach behavior still requires manual GUI verification in full macOS runtime. |
+| 2026-03-31 | 2 | Repaired `ServiceProtocols.swift` shortcut mapping extension syntax by closing `ShortcutKey` extension after the Carbon key-code switch | Restores compile-time correctness for the AppKit global-hotkey adapter path and removes parser desynchronization that surfaced as C function pointer diagnostics | Validation: `swiftc -frontend -parse Pinnacle/Services/ServiceProtocols.swift` passes. Full project build is still blocked in this environment because `xcodebuild` requires full Xcode (active developer directory is CommandLineTools). |
 
 ## 14. Risks and Mitigations
 - Global hotkey API edge cases:

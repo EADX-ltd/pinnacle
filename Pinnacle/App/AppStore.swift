@@ -140,14 +140,22 @@ final class AppStore: ObservableObject {
         case .clearAll:
             container.overlayService.clearAll(allowUndo: true)
         case .cycleColors:
-            // TODO: Wire palette cycling in settings/rendering phase.
-            break
+            let palette = ["#FF3B30FF", "#0A84FFFF", "#34C759FF", "#FFD60AFF", "#AF52DEFF", "#FFFFFFFF", "#FF9500FF"]
+            guard var config = toolState.configs[toolState.activeTool] else { break }
+            let idx = palette.firstIndex(of: config.colorHexRGBA) ?? -1
+            config.colorHexRGBA = palette[(idx + 1) % palette.count]
+            toolState.configs[toolState.activeTool] = config
+            container.overlayService.update(toolState: toolState)
         case .increaseStroke:
-            // TODO: Wire stroke width mutation in tool configuration flow.
-            break
+            guard var config = toolState.configs[toolState.activeTool] else { break }
+            config.strokeWidth = min(48, config.strokeWidth + 2)
+            toolState.configs[toolState.activeTool] = config
+            container.overlayService.update(toolState: toolState)
         case .decreaseStroke:
-            // TODO: Wire stroke width mutation in tool configuration flow.
-            break
+            guard var config = toolState.configs[toolState.activeTool] else { break }
+            config.strokeWidth = max(1, config.strokeWidth - 2)
+            toolState.configs[toolState.activeTool] = config
+            container.overlayService.update(toolState: toolState)
         case .toggleRadialControl:
             isRadialControlVisible.toggle()
             container.overlayService.setRadialControlVisible(isRadialControlVisible)
@@ -226,6 +234,10 @@ final class AppStore: ObservableObject {
                 send(.increaseStroke)
             case .decreaseStroke:
                 send(.decreaseStroke)
+            case let .applyToolOptions(tool, config, extendedOptions):
+                toolState.configs[tool] = config
+                toolState.extendedOptions[tool] = extendedOptions
+                container.overlayService.update(toolState: toolState)
             }
         }
     }
