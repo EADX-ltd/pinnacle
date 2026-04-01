@@ -48,13 +48,7 @@ struct OverlayRootView: View {
                         y: coordinateTransformer.globalPointToLocal(textDraft.center).y
                     )
                 }
-                HUDView(
-                    text: viewModel.hudText,
-                    color: viewModel.hudColor,
-                    tooltip: viewModel.hudTooltip
-                )
-                .padding(20)
-                if viewModel.isRadialControlEnabled {
+                if viewModel.isRadialControlEnabled && !viewModel.isPassThroughMode {
                     RadialControlView(viewModel: viewModel, availableSize: proxy.size)
                 }
             }
@@ -227,6 +221,24 @@ struct OverlayRootView: View {
             ))
         }
         return path
+    }
+}
+
+struct PassThroughRadialPanelView: View {
+    @ObservedObject var viewModel: OverlayViewModel
+    let availableSize: CGSize
+    let localCenter: CGPoint
+
+    var body: some View {
+        ZStack {
+            Color.clear
+            RadialControlView(
+                viewModel: viewModel,
+                availableSize: availableSize,
+                centerOverride: localCenter,
+                allowsRelocation: false
+            )
+        }
     }
 }
 

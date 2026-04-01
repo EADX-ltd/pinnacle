@@ -3,6 +3,8 @@ import SwiftUI
 struct RadialControlView: View {
     @ObservedObject var viewModel: OverlayViewModel
     let availableSize: CGSize
+    var centerOverride: CGPoint? = nil
+    var allowsRelocation = true
 
     @State private var dragGrabOffset: CGPoint?
     @State private var hoveredItem: OverlayViewModel.RadialItem?
@@ -33,10 +35,11 @@ struct RadialControlView: View {
             .gesture(
                 DragGesture(minimumDistance: 0, coordinateSpace: .named("overlay"))
                     .onChanged { value in
+                        guard allowsRelocation else { return }
                         if dragGrabOffset == nil {
                             dragGrabOffset = CGPoint(
-                                x: value.startLocation.x - viewModel.radialCenter.x,
-                                y: value.startLocation.y - viewModel.radialCenter.y
+                                x: value.startLocation.x - controlCenter.x,
+                                y: value.startLocation.y - controlCenter.y
                             )
                         }
                         guard value.translation.length > 4 else { return }
@@ -77,13 +80,17 @@ struct RadialControlView: View {
                     .transition(.opacity.animation(.easeInOut(duration: 0.1)))
             }
         }
-        .position(viewModel.radialCenter)
+        .position(controlCenter)
         .onHover { isHovering in
             if isHovering {
                 viewModel.activateRadialControl()
             }
             if !isHovering { hoveredItem = nil }
         }
+    }
+
+    private var controlCenter: CGPoint {
+        centerOverride ?? viewModel.radialCenter
     }
 
     private var centerIconName: String {

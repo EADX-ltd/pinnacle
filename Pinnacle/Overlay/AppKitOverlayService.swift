@@ -1,4 +1,5 @@
 import AppKit
+import Combine
 import Foundation
 import SwiftUI
 import os
@@ -8,11 +9,13 @@ final class AppKitOverlayService: OverlayService {
     private let logger = Logger(subsystem: "Pinnacle", category: "Overlay")
     private let viewModel = OverlayViewModel()
     private var overlayPanelByDisplayID: [CGDirectDisplayID: OverlayPanel] = [:]
+    private var passThroughControlPanelByDisplayID: [CGDirectDisplayID: OverlayPanel] = [:]
     private var activeDisplayID: CGDirectDisplayID?
     private var screenObserver: NSObjectProtocol?
     private var drawEventMonitor: Any?
     private var keyEventMonitor: Any?
     private var dragStartGlobalPoint: CGPoint?
+    private var cancellables: Set<AnyCancellable> = []
 
     init() {
         viewModel.strokeDurationRecorder = { [logger] durationMs in
@@ -45,7 +48,9 @@ final class AppKitOverlayService: OverlayService {
                     panel.makeKey()
                 }
             }
+            self.refreshOverlayInteractionState()
         }
+        bindViewModelState()
     }
 
     func startOverlay() {
@@ -72,6 +77,7 @@ final class AppKitOverlayService: OverlayService {
         activeDisplayID = mouseDisplayID()
         viewModel.isOverlayVisible = true
         viewModel.isPassThroughMode = false
+        refreshOverlayInteractionState()
         orderActivePanelFront()
         NSApp.activate(ignoringOtherApps: true)
         if let id = activeDisplayID, let panel = overlayPanelByDisplayID[id] {
@@ -86,6 +92,7 @@ final class AppKitOverlayService: OverlayService {
         viewModel.isOverlayVisible = false
         viewModel.isPassThroughMode = false
         viewModel.collapseRadialControl()
+        refreshOverlayInteractionState()
         removeMouseEventMonitor()
         removeKeyEventMonitor()
         for panel in overlayPanelByDisplayID.values {
@@ -145,6 +152,13 @@ final class AppKitOverlayService: OverlayService {
                 panel.orderOut(nil)
             }
         }
+        for (id, panel) in passThroughControlPanelByDisplayID {
+            if id == targetID || targetID == nil {
+                panel.orderFrontRegardless()
+            } else {
+                panel.orderOut(nil)
+            }
+        }
     }
 
     private func mouseDisplayID() -> CGDirectDisplayID? {
@@ -159,6 +173,8 @@ final class AppKitOverlayService: OverlayService {
         for staleID in staleIDs {
             overlayPanelByDisplayID[staleID]?.close()
             overlayPanelByDisplayID[staleID] = nil
+            passThroughControlPanelByDisplayID[staleID]?.close()
+            passThroughControlPanelByDisplayID[staleID] = nil
             logger.log("Removed overlay panel for detached display id=\(staleID, privacy: .public)")
         }
         for descriptor in descriptors {
@@ -175,6 +191,7 @@ final class AppKitOverlayService: OverlayService {
             overlayPanelByDisplayID[descriptor.id] = panel
             logger.log("Created overlay panel for display id=\(descriptor.id, privacy: .public)")
         }
+        refreshOverlayInteractionState()
     }
 
     private func makeOverlayPanel(for descriptor: DisplayDescriptor) -> OverlayPanel? {
@@ -197,6 +214,140 @@ final class AppKitOverlayService: OverlayService {
         ])
         panel.contentView = container
         return panel
+    }
+
+    private func bindViewModelState() {
+        viewModel.$isOverlayVisible
+            .sink { [weak self] _ in
+                self?.refreshOverlayInteractionState()
+            }
+            .store(in: &cancellables)
+
+        viewModel.$isPassThroughMode
+            .sink { [weak self] _ in
+                self?.refreshOverlayInteractionState()
+            }
+            .store(in: &cancellables)
+
+        viewModel.$radialCenter
+            .sink { [weak self] _ in
+                self?.updatePassThroughControlPanelFrames()
+            }
+            .store(in: &cancellables)
+    }
+
+    private func refreshOverlayInteractionState() {
+        let isClickThrough = viewModel.isOverlayVisible && viewModel.isPassThroughMode
+        for panel in overlayPanelByDisplayID.values {
+            panel.ignoresMouseEvents = isClickThrough
+        }
+
+        guard viewModel.isOverlayVisible else {
+            removePassThroughControlPanels()
+            return
+        }
+
+        if isClickThrough {
+            synchronizePassThroughControlPanels()
+            orderActivePanelFront()
+        } else {
+            removePassThroughControlPanels()
+        }
+    }
+
+    private func synchronizePassThroughControlPanels() {
+        let descriptors = NSScreen.screens.compactMap(\.displayDescriptor)
+        let activeIDs = Set(descriptors.map(\.id))
+        let staleIDs = Set(passThroughControlPanelByDisplayID.keys).subtracting(activeIDs)
+        for staleID in staleIDs {
+            passThroughControlPanelByDisplayID[staleID]?.close()
+            passThroughControlPanelByDisplayID[staleID] = nil
+        }
+
+        for descriptor in descriptors {
+            let layout = passThroughRadialPanelLayout(for: descriptor.frame)
+            if let panel = passThroughControlPanelByDisplayID[descriptor.id] {
+                if panel.frame != layout.frame {
+                    panel.setFrame(layout.frame, display: true)
+                }
+                panel.orderFrontRegardless()
+                continue
+            }
+
+            let panel = OverlayPanel(contentRect: layout.frame)
+            let hosting = NSHostingView(
+                rootView: PassThroughRadialPanelView(
+                    viewModel: viewModel,
+                    availableSize: layout.frame.size,
+                    localCenter: layout.localCenter
+                )
+            )
+            hosting.translatesAutoresizingMaskIntoConstraints = false
+            let container = NSView(frame: CGRect(origin: .zero, size: layout.frame.size))
+            container.addSubview(hosting)
+            NSLayoutConstraint.activate([
+                hosting.topAnchor.constraint(equalTo: container.topAnchor),
+                hosting.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+                hosting.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+                hosting.trailingAnchor.constraint(equalTo: container.trailingAnchor)
+            ])
+            panel.contentView = container
+            panel.orderFrontRegardless()
+            passThroughControlPanelByDisplayID[descriptor.id] = panel
+        }
+    }
+
+    private func removePassThroughControlPanels() {
+        for panel in passThroughControlPanelByDisplayID.values {
+            panel.orderOut(nil)
+            panel.close()
+        }
+        passThroughControlPanelByDisplayID.removeAll()
+    }
+
+    private func updatePassThroughControlPanelFrames() {
+        guard viewModel.isOverlayVisible, viewModel.isPassThroughMode else { return }
+        let descriptorsByID = Dictionary(
+            uniqueKeysWithValues: NSScreen.screens.compactMap(\.displayDescriptor).map { ($0.id, $0) }
+        )
+        for (displayID, panel) in passThroughControlPanelByDisplayID {
+            guard let descriptor = descriptorsByID[displayID] else { continue }
+            let layout = passThroughRadialPanelLayout(for: descriptor.frame)
+            if panel.frame != layout.frame {
+                panel.setFrame(layout.frame, display: true)
+            }
+            if let hosting = panel.contentView?.subviews.compactMap({ $0 as? NSHostingView<PassThroughRadialPanelView> }).first {
+                hosting.rootView = PassThroughRadialPanelView(
+                    viewModel: viewModel,
+                    availableSize: layout.frame.size,
+                    localCenter: layout.localCenter
+                )
+            }
+        }
+    }
+
+    private func passThroughRadialPanelLayout(for displayFrame: CGRect) -> (frame: CGRect, localCenter: CGPoint) {
+        let size = CGSize(width: 360, height: 460)
+        let localCenter = CGPoint(x: size.width * 0.5, y: 128)
+        let globalCenter = CGPoint(
+            x: displayFrame.minX + viewModel.radialCenter.x,
+            y: displayFrame.maxY - viewModel.radialCenter.y
+        )
+        let horizontalInset: CGFloat = 16
+        let verticalInset: CGFloat = 16
+        let minX = displayFrame.minX + horizontalInset
+        let maxX = displayFrame.maxX - horizontalInset - size.width
+        let minY = displayFrame.minY + verticalInset
+        let maxY = displayFrame.maxY - verticalInset - size.height
+
+        let frame = CGRect(
+            x: min(max(globalCenter.x - localCenter.x, minX), maxX),
+            y: min(max(globalCenter.y - (size.height - localCenter.y), minY), maxY),
+            width: size.width,
+            height: size.height
+        )
+
+        return (frame, localCenter)
     }
 
     // MARK: - Event monitoring
