@@ -43,6 +43,7 @@ final class AppKitOverlayService: OverlayService {
                     break
                 }
             } else {
+                self.orderActivePanelFront()
                 NSApp.activate(ignoringOtherApps: true)
                 if let id = self.activeDisplayID, let panel = self.overlayPanelByDisplayID[id] {
                     panel.makeKey()
@@ -54,6 +55,7 @@ final class AppKitOverlayService: OverlayService {
     }
 
     func startOverlay() {
+        activeDisplayID = preferredStartDisplayID()
         if screenObserver == nil {
             screenObserver = NotificationCenter.default.addObserver(
                 forName: NSApplication.didChangeScreenParametersNotification,
@@ -74,7 +76,6 @@ final class AppKitOverlayService: OverlayService {
             logger.error("No screen available - overlay panels cannot be created")
             return
         }
-        activeDisplayID = mouseDisplayID()
         viewModel.isOverlayVisible = true
         viewModel.isPassThroughMode = false
         refreshOverlayInteractionState()
@@ -142,9 +143,8 @@ final class AppKitOverlayService: OverlayService {
     // MARK: - Panel management
 
     private func orderActivePanelFront() {
+        activeDisplayID = resolvedSessionDisplayID()
         let targetID = activeDisplayID
-            ?? NSScreen.main?.displayDescriptor?.id
-            ?? overlayPanelByDisplayID.keys.first
         for (id, panel) in overlayPanelByDisplayID {
             if id == targetID {
                 panel.orderFrontRegardless()
@@ -166,10 +166,28 @@ final class AppKitOverlayService: OverlayService {
         return NSScreen.screens.first { $0.frame.contains(location) }?.displayDescriptor?.id
     }
 
+    private func preferredStartDisplayID() -> CGDirectDisplayID? {
+        mouseDisplayID()
+            ?? NSScreen.main?.displayDescriptor?.id
+            ?? NSScreen.screens.compactMap(\.displayDescriptor).first?.id
+    }
+
+    private func resolvedSessionDisplayID() -> CGDirectDisplayID? {
+        let availableIDs = Set(NSScreen.screens.compactMap(\.displayDescriptor).map(\.id))
+        if let activeDisplayID, availableIDs.contains(activeDisplayID) {
+            return activeDisplayID
+        }
+        return preferredStartDisplayID()
+    }
+
     private func synchronizeOverlayPanels() {
-        let descriptors = NSScreen.screens.compactMap(\.displayDescriptor)
-        let activeIDs = Set(descriptors.map(\.id))
-        let staleIDs = Set(overlayPanelByDisplayID.keys).subtracting(activeIDs)
+        let descriptorsByID = Dictionary(
+            uniqueKeysWithValues: NSScreen.screens.compactMap(\.displayDescriptor).map { ($0.id, $0) }
+        )
+        activeDisplayID = resolvedSessionDisplayID()
+        let targetID = activeDisplayID
+
+        let staleIDs = Set(overlayPanelByDisplayID.keys).subtracting(targetID.map { [$0] } ?? [])
         for staleID in staleIDs {
             overlayPanelByDisplayID[staleID]?.close()
             overlayPanelByDisplayID[staleID] = nil
@@ -177,19 +195,24 @@ final class AppKitOverlayService: OverlayService {
             passThroughControlPanelByDisplayID[staleID] = nil
             logger.log("Removed overlay panel for detached display id=\(staleID, privacy: .public)")
         }
-        for descriptor in descriptors {
-            if let panel = overlayPanelByDisplayID[descriptor.id] {
-                if panel.frame != descriptor.frame {
-                    panel.setFrame(descriptor.frame, display: true)
-                }
-                continue
+
+        guard let targetID, let descriptor = descriptorsByID[targetID] else {
+            refreshOverlayInteractionState()
+            return
+        }
+
+        if let panel = overlayPanelByDisplayID[targetID] {
+            if panel.frame != descriptor.frame {
+                panel.setFrame(descriptor.frame, display: true)
             }
+        } else {
             guard let panel = makeOverlayPanel(for: descriptor) else {
-                logger.error("Failed to create overlay panel for display id=\(descriptor.id, privacy: .public)")
-                continue
+                logger.error("Failed to create overlay panel for display id=\(targetID, privacy: .public)")
+                refreshOverlayInteractionState()
+                return
             }
-            overlayPanelByDisplayID[descriptor.id] = panel
-            logger.log("Created overlay panel for display id=\(descriptor.id, privacy: .public)")
+            overlayPanelByDisplayID[targetID] = panel
+            logger.log("Created overlay panel for display id=\(targetID, privacy: .public)")
         }
         refreshOverlayInteractionState()
     }
@@ -264,45 +287,47 @@ final class AppKitOverlayService: OverlayService {
     }
 
     private func synchronizePassThroughControlPanels() {
-        let descriptors = NSScreen.screens.compactMap(\.displayDescriptor)
-        let activeIDs = Set(descriptors.map(\.id))
-        let staleIDs = Set(passThroughControlPanelByDisplayID.keys).subtracting(activeIDs)
+        let descriptorsByID = Dictionary(
+            uniqueKeysWithValues: NSScreen.screens.compactMap(\.displayDescriptor).map { ($0.id, $0) }
+        )
+        let targetID = resolvedSessionDisplayID()
+        let staleIDs = Set(passThroughControlPanelByDisplayID.keys).subtracting(targetID.map { [$0] } ?? [])
         for staleID in staleIDs {
             passThroughControlPanelByDisplayID[staleID]?.close()
             passThroughControlPanelByDisplayID[staleID] = nil
         }
 
-        for descriptor in descriptors {
-            let layout = passThroughRadialPanelLayout(for: descriptor.frame)
-            if let panel = passThroughControlPanelByDisplayID[descriptor.id] {
-                if panel.frame != layout.frame {
-                    panel.setFrame(layout.frame, display: true)
-                }
-                panel.orderFrontRegardless()
-                continue
-            }
+        guard let targetID, let descriptor = descriptorsByID[targetID] else { return }
 
-            let panel = OverlayPanel(contentRect: layout.frame)
-            let hosting = NSHostingView(
-                rootView: PassThroughRadialPanelView(
-                    viewModel: viewModel,
-                    availableSize: layout.frame.size,
-                    localCenter: layout.localCenter
-                )
-            )
-            hosting.translatesAutoresizingMaskIntoConstraints = false
-            let container = NSView(frame: CGRect(origin: .zero, size: layout.frame.size))
-            container.addSubview(hosting)
-            NSLayoutConstraint.activate([
-                hosting.topAnchor.constraint(equalTo: container.topAnchor),
-                hosting.bottomAnchor.constraint(equalTo: container.bottomAnchor),
-                hosting.leadingAnchor.constraint(equalTo: container.leadingAnchor),
-                hosting.trailingAnchor.constraint(equalTo: container.trailingAnchor)
-            ])
-            panel.contentView = container
+        let layout = passThroughRadialPanelLayout(for: descriptor.frame)
+        if let panel = passThroughControlPanelByDisplayID[targetID] {
+            if panel.frame != layout.frame {
+                panel.setFrame(layout.frame, display: true)
+            }
             panel.orderFrontRegardless()
-            passThroughControlPanelByDisplayID[descriptor.id] = panel
+            return
         }
+
+        let panel = OverlayPanel(contentRect: layout.frame)
+        let hosting = NSHostingView(
+            rootView: PassThroughRadialPanelView(
+                viewModel: viewModel,
+                availableSize: layout.frame.size,
+                localCenter: layout.localCenter
+            )
+        )
+        hosting.translatesAutoresizingMaskIntoConstraints = false
+        let container = NSView(frame: CGRect(origin: .zero, size: layout.frame.size))
+        container.addSubview(hosting)
+        NSLayoutConstraint.activate([
+            hosting.topAnchor.constraint(equalTo: container.topAnchor),
+            hosting.bottomAnchor.constraint(equalTo: container.bottomAnchor),
+            hosting.leadingAnchor.constraint(equalTo: container.leadingAnchor),
+            hosting.trailingAnchor.constraint(equalTo: container.trailingAnchor)
+        ])
+        panel.contentView = container
+        panel.orderFrontRegardless()
+        passThroughControlPanelByDisplayID[targetID] = panel
     }
 
     private func removePassThroughControlPanels() {
@@ -318,19 +343,20 @@ final class AppKitOverlayService: OverlayService {
         let descriptorsByID = Dictionary(
             uniqueKeysWithValues: NSScreen.screens.compactMap(\.displayDescriptor).map { ($0.id, $0) }
         )
-        for (displayID, panel) in passThroughControlPanelByDisplayID {
-            guard let descriptor = descriptorsByID[displayID] else { continue }
-            let layout = passThroughRadialPanelLayout(for: descriptor.frame)
-            if panel.frame != layout.frame {
-                panel.setFrame(layout.frame, display: true)
-            }
-            if let hosting = panel.contentView?.subviews.compactMap({ $0 as? NSHostingView<PassThroughRadialPanelView> }).first {
-                hosting.rootView = PassThroughRadialPanelView(
-                    viewModel: viewModel,
-                    availableSize: layout.frame.size,
-                    localCenter: layout.localCenter
-                )
-            }
+        guard let displayID = resolvedSessionDisplayID(),
+              let descriptor = descriptorsByID[displayID],
+              let panel = passThroughControlPanelByDisplayID[displayID]
+        else { return }
+        let layout = passThroughRadialPanelLayout(for: descriptor.frame)
+        if panel.frame != layout.frame {
+            panel.setFrame(layout.frame, display: true)
+        }
+        if let hosting = panel.contentView?.subviews.compactMap({ $0 as? NSHostingView<PassThroughRadialPanelView> }).first {
+            hosting.rootView = PassThroughRadialPanelView(
+                viewModel: viewModel,
+                availableSize: layout.frame.size,
+                localCenter: layout.localCenter
+            )
         }
     }
 
@@ -349,7 +375,6 @@ final class AppKitOverlayService: OverlayService {
 
     private func passThroughRadialPanelLayout(for displayFrame: CGRect) -> (frame: CGRect, localCenter: CGPoint) {
         let size = CGSize(width: 360, height: 460)
-        let localCenter = CGPoint(x: size.width * 0.5, y: 128)
         let globalCenter = CGPoint(
             x: displayFrame.minX + viewModel.radialCenter.x,
             y: displayFrame.maxY - viewModel.radialCenter.y
@@ -361,11 +386,19 @@ final class AppKitOverlayService: OverlayService {
         let minY = displayFrame.minY + verticalInset
         let maxY = displayFrame.maxY - verticalInset - size.height
 
+        let preferredOrigin = CGPoint(
+            x: globalCenter.x - (size.width * 0.5),
+            y: globalCenter.y - (size.height - 128)
+        )
         let frame = CGRect(
-            x: min(max(globalCenter.x - localCenter.x, minX), maxX),
-            y: min(max(globalCenter.y - (size.height - localCenter.y), minY), maxY),
+            x: min(max(preferredOrigin.x, minX), maxX),
+            y: min(max(preferredOrigin.y, minY), maxY),
             width: size.width,
             height: size.height
+        )
+        let localCenter = CGPoint(
+            x: globalCenter.x - frame.minX,
+            y: size.height - (globalCenter.y - frame.minY)
         )
 
         return (frame, localCenter)

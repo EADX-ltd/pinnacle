@@ -449,9 +449,10 @@ final class PinnacleSmokeTests: XCTestCase {
         XCTAssertEqual(rect.width, rect.height, accuracy: 0.0001)
     }
 
-    func testCenterTapExitsPassThroughWithoutSelectingTool() {
+    func testCenterTapInPassThroughExitsWithoutSelectingTool() {
         let viewModel = OverlayViewModel()
         viewModel.isRadialExpanded = true
+        viewModel.toolState.activeTool = .rectangle
         viewModel.enterPassThroughMode()
 
         viewModel.handleCenterTap()
@@ -459,6 +460,16 @@ final class PinnacleSmokeTests: XCTestCase {
         XCTAssertFalse(viewModel.isPassThroughMode)
         XCTAssertTrue(viewModel.isRadialExpanded)
         XCTAssertNil(viewModel.selectedToolForOptions)
+    }
+
+    func testToolStateDefaultDrawingWidthsStartThin() {
+        let state = ToolState.default
+
+        XCTAssertEqual(state.configs[.pen]?.strokeWidth, 1)
+        XCTAssertEqual(state.configs[.arrow]?.strokeWidth, 1)
+        XCTAssertEqual(state.configs[.rectangle]?.strokeWidth, 1)
+        XCTAssertEqual(state.configs[.ellipse]?.strokeWidth, 1)
+        XCTAssertEqual(state.configs[.highlighter]?.strokeWidth, 12)
     }
 
     func testTooltipIncludesShiftHintForConstrainedTool() {

@@ -25,43 +25,7 @@ struct RadialControlView: View {
                 ToolOptionsPanelView(viewModel: viewModel, tool: tool)
                     .offset(y: primaryRadius + 72)
             }
-            ZStack {
-                Circle()
-                    .fill(.black.opacity(0.75))
-                Image(systemName: centerIconName)
-                    .foregroundStyle(.white)
-            }
-            .frame(width: centerSize, height: centerSize)
-            .contentShape(Circle())
-            .onTapGesture {
-                viewModel.handleCenterTap()
-            }
-            .gesture(
-                DragGesture(minimumDistance: 0, coordinateSpace: .named("overlay"))
-                    .onChanged { value in
-                        guard allowsRelocation else { return }
-                        if dragGrabOffset == nil {
-                            dragGrabOffset = CGPoint(
-                                x: value.startLocation.x - controlCenter.x,
-                                y: value.startLocation.y - controlCenter.y
-                            )
-                        }
-                        guard value.translation.length > 4 else { return }
-                        viewModel.activateRadialControl()
-                        let offset = dragGrabOffset ?? .zero
-                        viewModel.moveRadialControl(
-                            to: CGPoint(
-                                x: value.location.x - offset.x,
-                                y: value.location.y - offset.y
-                            ),
-                            in: availableSize
-                        )
-                    }
-                    .onEnded { value in
-                        dragGrabOffset = nil
-                        guard allowsRelocation, value.translation.length > 4 else { return }
-                    }
-            )
+            centerButton
 
             if let hovered = hoveredItem {
                 Text(viewModel.tooltip(for: hovered))
@@ -88,6 +52,53 @@ struct RadialControlView: View {
         centerOverride ?? viewModel.radialCenter
     }
 
+    @ViewBuilder
+    private var centerButton: some View {
+        let button = ZStack {
+            Circle()
+                .fill(.black.opacity(0.75))
+            Image(systemName: centerIconName)
+                .foregroundStyle(.white)
+        }
+        .frame(width: centerSize, height: centerSize)
+        .contentShape(Circle())
+        .onTapGesture {
+            viewModel.handleCenterTap()
+        }
+
+        if allowsRelocation {
+            button.gesture(relocationGesture)
+        } else {
+            button
+        }
+    }
+
+    private var relocationGesture: some Gesture {
+        DragGesture(minimumDistance: 0, coordinateSpace: .named("overlay"))
+            .onChanged { value in
+                if dragGrabOffset == nil {
+                    dragGrabOffset = CGPoint(
+                        x: value.startLocation.x - controlCenter.x,
+                        y: value.startLocation.y - controlCenter.y
+                    )
+                }
+                guard value.translation.length > 4 else { return }
+                viewModel.activateRadialControl()
+                let offset = dragGrabOffset ?? .zero
+                viewModel.moveRadialControl(
+                    to: CGPoint(
+                        x: value.location.x - offset.x,
+                        y: value.location.y - offset.y
+                    ),
+                    in: availableSize
+                )
+            }
+            .onEnded { value in
+                dragGrabOffset = nil
+                guard value.translation.length > 4 else { return }
+            }
+    }
+
     private var centerIconName: String {
         if !viewModel.isRadialExpanded { return "circle.grid.2x2.fill" }
         if let tool = viewModel.selectedToolForOptions, tool.hasConfigurableOptions {
@@ -108,6 +119,7 @@ struct RadialControlView: View {
                     action(item)
                 } label: {
                     Image(systemName: item.symbolName)
+                        .symbolRenderingMode(.monochrome)
                         .font(.system(size: 14, weight: .semibold))
                         .foregroundStyle(
                             viewModel.selectedToolForOptions.map { .tool($0) } == item

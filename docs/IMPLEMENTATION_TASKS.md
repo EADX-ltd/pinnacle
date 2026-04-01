@@ -20,9 +20,9 @@ This file is the execution board for implementation work. Use it with `docs/ARCH
 |---|---|
 | Current Task ID | `P3-T09` |
 | Current Phase | `3` |
-| Last Updated (UTC) | `2026-04-01 13:45` |
+| Last Updated (UTC) | `2026-04-01 15:14` |
 | Updated By | `agent` |
-| Notes | `Expanded Phase 3 polish now also includes a true center-button tap path so pass-through exit behaves like the tool buttons; remaining blocker is still manual macOS GUI validation.` |
+| Notes | `Overlay sessions are now confined to a single display chosen from the mouse location when annotation starts; remaining blocker is still the manual macOS GUI checklist for Phase 3.` |
 
 ## Phase Status Board
 
@@ -33,7 +33,7 @@ This file is the execution board for implementation work. Use it with `docs/ARCH
 | 2 | Global shortcuts | `done` | Task group `P2-*` all `done` |
 | 3 | Overlay engine (single display) | `in_progress` | Task group `P3-*` complete except final `P3-T09` manual GUI checklist |
 | 4 | Tool renderers + undo/redo | `done` | Task group `P4-*` all `done` including per-tool options and modifier rules |
-| 5 | Multi-display support | `done` | Task group `P5-*` all `done` |
+| 5 | Multi-display support | `done` | Task group `P5-*` complete, with session behavior now intentionally limited to one mouse-selected display at action start |
 | 6 | Recording engine integration | `todo` | Task group `P6-*` all `done` |
 | 7 | Settings UI for shortcuts/colors | `todo` | Task group `P7-*` all `done` |
 | 8 | Persistence and output management | `todo` | Task group `P8-*` all `done` |
@@ -101,6 +101,10 @@ All previously listed items are `done`. The batch below was completed in this se
 | P3-T19 | Custom hover tooltip overlay labels for radial items | P3-T17 | `done` | Tooltip shows above ring on hover; no reliance on `.help()` system mechanism |
 | P3-T20 | Escape key multi-level handler | P3-T13, P4-T03 | `done` | Escape cancels options → cancels text draft → deselects tool + enters pass-through |
 | P3-T21 | Pass-through mode with per-area hit testing via `PassThroughContainerView` | P3-T20 | `done` | Mouse events reach underlying apps; HUD and radial remain interactive; annotations stay visible |
+| P3-T22 | Make pass-through center tap resume the active tool workflow and slim default stroke widths | P3-T21, P4-T08 | `done` | Center tap in pass-through mirrors tapping the active tool, and default stroke widths for pen/arrow/rectangle/ellipse start at `1` while highlighter stays unchanged |
+| P3-T23 | Fix pass-through center button first-click activation reliability | P3-T22 | `done` | Center button resumes annotation on the first click even when no tool is selected for options and the pass-through radial is non-relocatable |
+| P3-T24 | Exit pass-through on first center click without preselecting a tool and preserve visible radial position | P3-T23 | `done` | First center click exits pass-through with `selectedToolForOptions == nil`, and the visible radial center stays aligned before and after pass-through even near display edges |
+| P3-T25 | Sync pass-through exit to the interacted display in multi-display mode | P3-T24, P5-T01 | `done` | Exiting pass-through reactivates the overlay on the display currently under interaction instead of flashing a stale off-monitor panel |
 
 ### Phase 4: Tool Renderers and Undo/Redo
 | ID | Task | Depends On | Status | Acceptance Criteria |
@@ -123,10 +127,11 @@ All previously listed items are `done`. The batch below was completed in this se
 | ID | Task | Depends On | Status | Acceptance Criteria |
 |---|---|---|---|---|
 | P5-T01 | Add display discovery and lifecycle observer | P3-T01 | `done` | Attach/detach display updates overlays correctly |
-| P5-T02 | Create one overlay per active display | P5-T01 | `done` | Annotation available independently on each display |
+| P5-T02 | Create one overlay per active display | P5-T01 | `done` | Baseline per-display overlay infrastructure exists for future display selection work |
 | P5-T03 | Implement coordinate transform utility | P5-T02 | `done` | Cross-display geometry calculations are correct |
-| P5-T04 | Ensure tool parity and state sync across displays | P5-T02 | `done` | Same tool/color behavior on all displays |
+| P5-T04 | Ensure tool parity and state sync across displays | P5-T02 | `done` | Shared tool/scene state behaves consistently regardless of display layout transforms |
 | P5-T05 | Add tests/manual matrix for edge display layouts | P5-T03 | `done` | Cases include negative origins and mixed scale factors |
+| P5-T06 | Restrict overlay sessions to the mouse-selected display at action start | P5-T01, P5-T03 | `done` | Starting annotation creates and maintains overlay/pass-through UI on exactly one display: the one under the pointer when the action begins |
 
 ### Phase 6: Recording Engine Integration
 | ID | Task | Depends On | Status | Acceptance Criteria |
@@ -204,3 +209,8 @@ All previously listed items are `done`. The batch below was completed in this se
 | 2026-04-01 | P3-T09 | Added pass-through center-tap recovery with no selected tool, extended Shift-constrained previews to square and center-based circle geometry, and changed the text tool to use left-aligned anchored placement for both draft and committed text | `swiftc -frontend -parse Pinnacle/Overlay/OverlayScene.swift Pinnacle/Overlay/OverlayViewModel.swift Pinnacle/Overlay/OverlayRootView.swift Pinnacle/Overlay/RadialControlView.swift Pinnacle/Overlay/AppKitOverlayService.swift PinnacleTests/PinnacleSmokeTests.swift` passed; `xcodebuild` unavailable (CommandLineTools) | P3-T09 |
 | 2026-04-01 | P3-T09 | Updated tooltips to describe each tool’s `Shift` modifier behavior and moved the initial radial/HUD spawn to the right side of the display on first overlay appearance | `swiftc -frontend -parse Pinnacle/Overlay/OverlayViewModel.swift Pinnacle/Overlay/OverlayRootView.swift PinnacleTests/PinnacleSmokeTests.swift` passed; `xcodebuild` unavailable (CommandLineTools) | P3-T09 |
 | 2026-04-01 | P3-T09 | Changed the radial center `X` to use a direct tap path instead of relying on the drag gesture end-state, so exiting pass-through now behaves like clicking a tool even when no tool is selected | `swiftc -frontend -parse Pinnacle/Overlay/RadialControlView.swift Pinnacle/Overlay/OverlayViewModel.swift` passed; `xcodebuild` unavailable (CommandLineTools) | P3-T09 |
+| 2026-04-01 | P3-T22 | Refined pass-through center tap so it reselects the active tool workflow exactly like a tool tap, and changed default stroke widths for pen/arrow/rectangle/ellipse to `1` while preserving the highlighter default | `swiftc -frontend -parse Pinnacle/Domain/AppDomainModels.swift Pinnacle/Overlay/OverlayViewModel.swift PinnacleTests/PinnacleSmokeTests.swift` passed; `xcodebuild test -project Pinnacle.xcodeproj -scheme Pinnacle -destination 'platform=macOS' -derivedDataPath /tmp/PinnacleDerivedData -only-testing:PinnacleTests/PinnacleSmokeTests CODE_SIGNING_ALLOWED=NO` could not run because `xcode-select` points to CommandLineTools | P3-T09 |
+| 2026-04-01 | P3-T23 | Removed the relocation drag recognizer from the non-relocatable pass-through center control, preventing the zero-distance drag gesture from stealing the first click before the center tap handler can resume annotation | `swiftc -frontend -parse Pinnacle/Overlay/RadialControlView.swift Pinnacle/Overlay/OverlayViewModel.swift` passed; `xcodebuild` unavailable (CommandLineTools) | P3-T09 |
+| 2026-04-01 | P3-T24 | Corrected pass-through center-click semantics so the first click only exits pass-through and leaves `selectedToolForOptions` empty, and changed pass-through panel layout to derive `localCenter` from the clamped frame so the visible radial position does not jump left near screen edges | `swiftc -frontend -parse Pinnacle/Overlay/OverlayViewModel.swift Pinnacle/Overlay/AppKitOverlayService.swift PinnacleTests/PinnacleSmokeTests.swift` passed; `xcodebuild` unavailable (CommandLineTools) | P3-T09 |
+| 2026-04-01 | P3-T25 | Synced pass-through exit to the currently interacted display by refreshing `activeDisplayID` from the mouse location when entering/leaving pass-through, reordering panels before regaining focus, and updating `activeDisplayID` during overlay mouse events so the overlay no longer flashes onto a stale secondary monitor on the first click | `swiftc -frontend -parse Pinnacle/Overlay/AppKitOverlayService.swift Pinnacle/Overlay/OverlayViewModel.swift` passed; `xcodebuild` unavailable (CommandLineTools) | P3-T09 |
+| 2026-04-01 | P5-T06 | Re-scoped overlay sessions to a single display chosen from the mouse location when annotation starts, keeping exactly one overlay panel and one pass-through control panel alive for the session display instead of mirroring UI across all connected monitors | `swiftc -frontend -parse Pinnacle/Overlay/AppKitOverlayService.swift Pinnacle/Overlay/OverlayViewModel.swift` passed; `xcodebuild` unavailable (CommandLineTools) | P3-T09 |
