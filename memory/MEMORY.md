@@ -17,14 +17,28 @@ macOS menu bar annotation app. SwiftUI + AppKit hybrid. See CLAUDE.md for struct
 - Defaults via `ToolKind.allCases.reduce(into:)`.
 
 ## Overlay / Radial UX
-- Radial control: hover-activated, 3-second focus-loss collapse (`scheduleRadialCollapse`).
+- Radial control: hover-activated, **no auto-collapse** (timer removed). Stays expanded until Escape or center tap.
 - No secondary ring. Tool selection sets `selectedToolForOptions`.
 - Center icon: grid (collapsed) → xmark (expanded, no tool/eraser) → paintpalette (expanded, configurable tool).
 - Tapping center with configurable tool selected toggles `ToolOptionsPanelView`.
 - Options panel uses `pendingConfig` and `pendingExtendedOptions` (both @Published on OverlayViewModel).
 - OK → `confirmOptions()` → updates local toolState + dispatches `.applyToolOptions` action.
-- Cancel → `cancelOptions()` → discards.
-- `scheduleRadialCollapse()` guards `!isOptionsOpen` so panel stays open.
+- Cancel / red `×` button → `cancelOptions()` → discards.
+- Custom `@State hoveredItem` tooltip overlays replace `.help()` (unreliable in non-activating panels).
+
+## Pass-Through Mode (Escape key)
+- Escape: cancel options → cancel text draft → deselect tool → `enterPassThroughMode()`.
+- `enterPassThroughMode()`: sets `isPassThroughMode = true`, calls `onPassThroughModeChanged(true)`.
+- `AppKitOverlayService` toggles `panel.ignoresMouseEvents = true` for all panels.
+- `PassThroughContainerView` overrides `hitTest` to only allow hits in HUD (top-left ~240×54) and radial area.
+- Clicking any radial tool → `exitPassThroughMode()` → panels interactive again.
+- App is activated and panel made key on `startOverlay()` so local key monitor works.
+
+## Text Editing Config Snapshot
+- `beginTextEditing` saves `textDraftConfig` and `textDraftExtendedOptions` snapshot.
+- `commitTextDraft` uses snapshot; color/font/size frozen at edit-start time.
+- `cancelTextDraft()` clears draft + snapshot + calls `onTextEditingActive(false)`.
+- `OverlayRootView` uses `viewModel.textDraftActiveConfig` for live rendering of in-progress text.
 
 ## Scene Element Model
 - `OverlaySceneElement.Kind` stores `lineStyle: LineStyle` in stroke/arrow/rect/ellipse.

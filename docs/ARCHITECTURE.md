@@ -120,21 +120,28 @@ Non-goals:
 Behavior contract:
 - Available in annotation mode; toggleable by shortcut/menu.
 - Default state is a single small collapsed circle.
-- Hovering the center circle activates control.
+- Hovering the center circle activates control (expands permanently — no auto-collapse timer).
 - Activated control expands the first donut ring of tools around the center circle.
-- Hovering a tool in the first ring shows a tooltip with the tool name.
+- Hovering a tool in the first ring shows a custom floating tooltip with the tool name + shortcut.
 - Clicking a tool selects it and replaces center `X` with an options-trigger icon (color-picker icon).
 - Clicking the options-trigger icon opens options for the selected tool in a panel below the first ring.
 - The options panel is anchored to the radial control and moves together with it.
-- Options panel uses explicit `OK` and `Cancel` actions.
+- Options panel has an `OK`, `Cancel`, and a red `×` close button (all equivalent to Cancel).
 - `OK` applies changes and stores them as last-used settings for that tool.
-- `Cancel` discards pending changes and keeps previously saved settings.
-- Closing options (`OK` or `Cancel`) returns center icon to `X`.
-- Control deactivates after losing focus for more than 3 seconds.
-- On deactivation, control collapses back to the single small circle.
+- `Cancel`/`×` discards pending changes and keeps previously saved settings.
+- Closing options (`OK` or `Cancel`/`×`) returns center icon to `X`.
+- Control never auto-collapses; it stays expanded until explicitly dismissed (Escape key or center tap).
 - Draggable with edge snap and remembers last position.
 - Pass-through interaction outside control bounds.
 - If a tool has no configurable options, options-trigger icon remains hidden/disabled for that tool.
+
+### 4.9 Escape Key and Pass-Through Mode
+- Pressing **Escape** while options panel is open → cancels and closes options panel.
+- Pressing **Escape** while text tool is being edited → cancels in-progress text element.
+- Pressing **Escape** in normal annotation mode → deselects current radial tool selection and enters **pass-through mode**.
+- **Pass-through mode**: overlay panels set `ignoresMouseEvents = true`; drawn annotations remain visible; only the HUD pill and radial control area remain interactive via per-area `hitTest` in `PassThroughContainerView`.
+- Clicking any tool in the radial control while in pass-through mode → exits pass-through and returns to annotation mode.
+- Text element color/font/size are snapshotted at edit-begin time and are unaffected by tool-config changes made during typing.
 
 ## 5. Tooling Model
 
@@ -470,6 +477,7 @@ Every implementation phase must satisfy all gates below before being marked comp
 | 2026-03-31 | 0 | Updated protocol isolation contracts and preference serialization rules; reordered section 4 headings sequentially | Addresses concrete review findings for concurrency correctness, persistence safety, and document navigability | Prevents actor isolation leaks and non-codable preference writes; improves test signal quality and architecture readability |
 | 2026-04-01 | 3/4 | Re-scoped radial interaction to hover-activation and 3-second focus-loss timeout; replaced shared second ring with per-tool options panel below first ring | Existing interaction model produced redundant second ring behavior and did not match desired UX | Prioritizes a new corrective batch in Phase 3/4 before continuing to Phase 6+ |
 | 2026-04-01 | 3/4 | Implemented full corrective batch: hover→activate (3s collapse), no secondary ring, center-icon swap (paintpalette for configurable tools), ToolOptionsPanelView anchored below first ring with OK/Cancel, LineStyle/ArrowStyle/TextFontDesign domain enums, ToolExtendedOptions in ToolState, per-element line style and arrow style stored in OverlaySceneElement.Kind, double-headed arrow renderer, font design per text element, applyToolOptions OverlayAction round-tripped through AppStore | P3-T13/T07/T14/T15/T16/T17 and P4-T08/T09/T10/T11 all done; static review and new targeted tests cover model correctness, options routing, and scene undo/redo; xcodebuild unavailable (CommandLineTools); P3-T09 remains blocked on manual GUI checklist |
+| 2026-04-01 | 3/4 | Removed 3-second radial auto-collapse timer (HUD stays expanded permanently); added Escape key with multi-level handler (cancel options → cancel text → deselect tool + enter pass-through mode); introduced `PassThroughContainerView` with per-area `hitTest` override so mouse events reach underlying apps in pass-through mode while HUD/radial remain interactive; added red `×` close button on options panel as Cancel alias; fixed text-element config snapshot in `beginTextEditing` so in-progress text color/font/size are frozen at edit-start and unaffected by later tool-config changes; replaced system `.help()` tooltips with custom `@State hoveredItem` overlay labels for reliable display in non-activating panels; app is activated and overlay panel made key on annotation start to enable local key event monitoring | Closing batch of P3/P4 UX fixes required before Phase 6; xcodebuild unavailable (CommandLineTools) | Sections 4.8 and 4.9 updated to reflect permanent-HUD and pass-through contracts; P3-T09 manual checklist still open |
 | 2026-03-31 | 1 | Added `MenuBarExtra` app shell, introduced `AppStore` with `SessionMode`/`ToolState`, and centralized command dispatch via `CommandID` reducer for annotation and recording lifecycle | Establishes a deterministic, testable state transition core for UI and service orchestration while exposing real-time active-mode status in the menu bar | Completes Phase 1 deliverables and provides a stable base for Phase 2 shortcut routing; validation: transition tests added, but `xcodebuild` execution is currently blocked in this environment because full Xcode is not configured |
 | 2026-03-31 | 2 | Added a codable shortcut model/default keymap, conflict fallback validator, and `AppKitShortcutService` for local/global key event routing; wired shortcut registration and persisted bindings through `AppStore` | Delivers Phase 2 global shortcut routing with deterministic command mapping and a safe fallback when user bindings conflict | Completes Phase 2 deliverables and enables shortcut-driven lifecycle/tool selection; validation: new shortcut tests added but `xcodebuild` execution remains blocked in this environment (active developer directory is CommandLineTools), known limitation: undo/redo/clear/color/stroke/radial command handlers are currently intentional no-ops until later phases |
 | 2026-03-31 | 3 | Implemented single-display AppKit overlay engine with transparent top-level panel, pointer-driven pen/highlighter vector strokes, active-tool HUD, and radial control (collapsed/expanded/secondary rings, shortcut tooltips, focus-loss timeout collapse) wired through `OverlayService` and `AppStore` command dispatch | Delivers the core Phase 3 runtime interaction loop while preserving module boundaries (`AppStore` <-> `OverlayService`) and enabling later undo/redo integration without UI rewrites | Phase 3 remains in progress: P3-T01..P3-T08 and P3-T11..P3-T14 are implemented; P3-T09 remains blocked on manual GUI checklist. P3-T10 was completed in Phase 4 after undo/redo/clear integration. Validation: added overlay wiring smoke tests; `xcodebuild` could not run in this environment because active developer directory is CommandLineTools |

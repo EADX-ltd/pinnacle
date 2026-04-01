@@ -39,15 +39,13 @@ This file is the execution board for implementation work. Use it with `docs/ARCH
 | 9 | Stabilization, profiling, test pass | `todo` | Task group `P9-*` all `done` |
 
 ## Next Batch Priority (Must Complete Before Phase 6)
-1. `P3-T13` activation lifecycle with hover activation and 3-second deactivation timeout.
-2. `P3-T07` remove shared second ring and route to per-tool options workflow.
-3. `P3-T15` center icon behavior: selected tool swaps center `X` to options-trigger icon.
-4. `P3-T16` tool options panel anchored below first ring with `OK`/`Cancel`.
-5. `P3-T17` first-ring tool-name tooltips on hover.
-6. `P4-T08` drawing-tool option model and renderer integration.
-7. `P4-T09` arrow option model and renderer integration.
-8. `P4-T10` text option model and renderer integration.
-9. `P4-T11` last-used vs default fallback behavior by tool.
+All previously listed items are `done`. The batch below was completed in this session:
+1. `P3-T18` Remove radial auto-collapse timer — HUD stays activated permanently. `done`
+2. `P3-T19` Custom hover tooltips for radial ring items (replaces `.help()` which is unreliable in non-activating panels). `done`
+3. `P3-T20` Escape key multi-level handler: cancel options → cancel text draft → deselect + enter pass-through mode. `done`
+4. `P3-T21` Pass-through mode: overlay `ignoresMouseEvents` toggled; `PassThroughContainerView` routes hits only to HUD/radial area. `done`
+5. `P4-T12` Red `×` close button on options panel (Cancel alias). `done`
+6. `P4-T13` Text element config snapshot: color/font/size frozen at edit-start, isolated from later tool-config changes. `done`
 
 ## Concrete Task Backlog
 
@@ -98,6 +96,10 @@ This file is the execution board for implementation work. Use it with `docs/ARCH
 | P3-T15 | Implement center icon swap for selected tool options | P3-T07 | `done` | Selecting a configurable tool replaces center `X` with options-trigger icon; non-configurable tools keep options trigger hidden/disabled |
 | P3-T16 | Implement anchored options panel below first ring (`OK`/`Cancel`) | P3-T15 | `done` | Options panel appears below first ring, moves with radial control, and closes with explicit `OK`/`Cancel` |
 | P3-T17 | Implement first-ring tool-name tooltip behavior | P3-T06 | `done` | Hovering a first-ring tool shows its name tooltip and hides on leave |
+| P3-T18 | Remove radial auto-collapse timer; HUD stays expanded permanently | P3-T13 | `done` | Radial control never auto-collapses; only dismissed by Escape or center tap |
+| P3-T19 | Custom hover tooltip overlay labels for radial items | P3-T17 | `done` | Tooltip shows above ring on hover; no reliance on `.help()` system mechanism |
+| P3-T20 | Escape key multi-level handler | P3-T13, P4-T03 | `done` | Escape cancels options → cancels text draft → deselects tool + enters pass-through |
+| P3-T21 | Pass-through mode with per-area hit testing via `PassThroughContainerView` | P3-T20 | `done` | Mouse events reach underlying apps; HUD and radial remain interactive; annotations stay visible |
 
 ### Phase 4: Tool Renderers and Undo/Redo
 | ID | Task | Depends On | Status | Acceptance Criteria |
@@ -113,6 +115,8 @@ This file is the execution board for implementation work. Use it with `docs/ARCH
 | P4-T09 | Implement configurable options for arrows | P3-T16 | `done` | Options include single/double-sided arrow, color, and line style; double arrowhead renders correctly |
 | P4-T10 | Implement configurable options for text tool | P3-T16 | `done` | Options include font design (sans/serif/mono), color, and size; font design stored per text element |
 | P4-T11 | Implement tool settings fallback behavior | P4-T08, P4-T09, P4-T10 | `done` | Each tool uses last accepted (`OK`) settings via `ToolState.extendedOptions`; defaults from `ToolExtendedOptions.default` apply when no saved settings exist |
+| P4-T12 | Add red `×` close button to options panel (Cancel alias) | P3-T16 | `done` | Red × in top-right of options panel closes panel without applying changes |
+| P4-T13 | Snapshot text tool config at edit-start to isolate from live changes | P4-T10 | `done` | `beginTextEditing` stores config snapshot; `commitTextDraft` uses snapshot; color/font unaffected by tool changes made while typing |
 
 ### Phase 5: Multi-Display Support
 | ID | Task | Depends On | Status | Acceptance Criteria |
@@ -193,3 +197,4 @@ This file is the execution board for implementation work. Use it with `docs/ARCH
 | 2026-03-31 | P2-T01 | Fixed `ServiceProtocols.swift` syntax in `ShortcutKey` Carbon key-code extension by closing the extension block, restoring valid hotkey service compilation path | `swiftc -frontend -parse Pinnacle/Services/ServiceProtocols.swift` passed; `xcodebuild` remains unavailable in this environment (`xcode-select` points to CommandLineTools) | P6-T01 |
 | 2026-04-01 | P3/P4 rescope | Re-scoped radial UX to hover activation + 3s focus-loss timeout, removed generic second ring, and introduced per-tool options panel contract with `OK`/`Cancel` and per-tool fallback behavior | Documentation consistency review across `docs/ARCHITECTURE.md` and `docs/IMPLEMENTATION_TASKS.md` | P3-T13 |
 | 2026-04-01 | P3-T13,P3-T07,P3-T14,P3-T15,P3-T16,P3-T17,P4-T08,P4-T09,P4-T10,P4-T11 | Implemented activation lifecycle (hover→expand, focus-loss→3s collapse), removed generic secondary ring, added per-tool options panel with OK/Cancel anchored below first ring, center icon swaps to paintpalette for configurable tools, added LineStyle/ArrowStyle/TextFontDesign domain models, updated OverlaySceneElement.Kind to store line style and arrow style per element, wired double-headed arrow renderer, per-tool options stored in ToolState.extendedOptions and round-tripped through OverlayAction.applyToolOptions | Static code review; validation via targeted tests for ToolExtendedOptions defaults, applyToolOptions routing, element model per-field storage, and scene undo/redo; `xcodebuild` still unavailable (CommandLineTools) | P3-T09 |
+| 2026-04-01 | P3-T18,P3-T19,P3-T20,P3-T21,P4-T12,P4-T13 | Removed 3-second radial auto-collapse timer (HUD permanently expanded once activated); replaced `.help()` tooltips with custom `@State hoveredItem` overlay labels; added Escape key local event monitor with multi-level handler (cancel options → cancel text draft → deselect + enter pass-through); implemented `PassThroughContainerView` with per-area `hitTest` for pass-through mode where annotations stay visible but mouse events reach underlying apps; HUD/radial remain interactive via hit-test routing; added red `×` close button on options panel; fixed text-element config snapshot so in-progress text is isolated from live tool-config changes; app activated + overlay panel made key on annotation start for reliable local key monitoring | Static code review; `xcodebuild` unavailable (CommandLineTools) | P3-T09 |
