@@ -28,7 +28,7 @@ final class AppKitOverlayService: OverlayService {
                     NSApp.activate(ignoringOtherApps: true)
                     panel.makeKey()
                 }
-            } else {
+            } else if !self.viewModel.isOverlayVisible || self.viewModel.isPassThroughMode {
                 for panel in self.overlayPanelByDisplayID.values where NSApp.keyWindow === panel {
                     panel.resignKey()
                     break
@@ -458,23 +458,14 @@ final class AppKitOverlayService: OverlayService {
 
     private func handleOverlayMouseEvent(_ event: NSEvent) {
         guard viewModel.isOverlayVisible, !viewModel.isPassThroughMode else { return }
-        guard let panel = event.window as? OverlayPanel,
-              let (displayID, _) = overlayPanelByDisplayID.first(where: { $0.value === panel }),
-              let descriptor = NSScreen.screens.compactMap(\.displayDescriptor).first(where: { $0.id == displayID })
-        else { return }
+        guard let descriptor = descriptorForOverlayEvent(event) else { return }
+        let globalPt = globalOverlayPoint(for: event, in: descriptor)
+        let localPt = DisplayCoordinateTransformer(displayFrame: descriptor.frame).globalPointToLocal(globalPt)
 
-        // Convert AppKit window coords (Y-up) → SwiftUI panel coords (Y-down)
-        let winPt = event.locationInWindow
-        let localPt = CGPoint(x: winPt.x, y: descriptor.frame.height - winPt.y)
-
-        // Don't start drawing inside the radial control area
         let radialRadius: CGFloat = viewModel.isRadialExpanded ? 160 : 28
         if hypot(localPt.x - viewModel.radialCenter.x, localPt.y - viewModel.radialCenter.y) < radialRadius {
             return
         }
-
-        let transformer = DisplayCoordinateTransformer(displayFrame: descriptor.frame)
-        let globalPt = transformer.localPointToGlobal(localPt)
 
         let isShiftConstrained = event.modifierFlags.contains(.shift)
 
@@ -493,5 +484,32 @@ final class AppKitOverlayService: OverlayService {
         default:
             break
         }
+    }
+
+    private func descriptorForOverlayEvent(_ event: NSEvent) -> DisplayDescriptor? {
+        let screenPoint: CGPoint
+        if let window = event.window {
+            screenPoint = window.convertPoint(toScreen: event.locationInWindow)
+        } else {
+            screenPoint = NSEvent.mouseLocation
+        }
+
+        return NSScreen.screens
+            .compactMap(\.displayDescriptor)
+            .first { $0.frame.contains(screenPoint) }
+    }
+
+    private func globalOverlayPoint(for event: NSEvent, in descriptor: DisplayDescriptor) -> CGPoint {
+        let screenPoint: CGPoint
+        if let window = event.window {
+            screenPoint = window.convertPoint(toScreen: event.locationInWindow)
+        } else {
+            screenPoint = NSEvent.mouseLocation
+        }
+
+        return CGPoint(
+            x: screenPoint.x,
+            y: descriptor.frame.maxY - screenPoint.y
+        )
     }
 }
