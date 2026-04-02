@@ -60,8 +60,15 @@ struct OverlayTextItem: Identifiable, Equatable {
 }
 
 struct TextDraft: Equatable {
+    let id: UUID
     var text: String
     var origin: CGPoint
+
+    init(id: UUID = UUID(), text: String, origin: CGPoint) {
+        self.id = id
+        self.text = text
+        self.origin = origin
+    }
 }
 
 struct OverlaySceneModel {

@@ -109,7 +109,7 @@ final class OverlayViewModel: ObservableObject {
             handleShapeDragEnded(translation: translation)
         case .text:
             if translation.length <= 6 {
-                beginTextEditing(at: location)
+                queueTextEditing(at: location)
             }
         case .eraser:
             break
@@ -303,8 +303,19 @@ final class OverlayViewModel: ObservableObject {
         onTextEditingActive?(false)
     }
 
+    private func queueTextEditing(at point: CGPoint) {
+        let needsDeferredRestart = textDraft != nil
+        if needsDeferredRestart {
+            commitTextDraft()
+            DispatchQueue.main.async { [weak self] in
+                self?.beginTextEditing(at: point)
+            }
+            return
+        }
+        beginTextEditing(at: point)
+    }
+
     private func beginTextEditing(at point: CGPoint) {
-        commitTextDraft()
         textDraftConfig = toolState.configs[toolState.activeTool]
         textDraftExtendedOptions = toolState.extendedOptions[toolState.activeTool]
         textDraft = TextDraft(text: "", origin: point)

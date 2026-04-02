@@ -40,10 +40,12 @@ struct OverlayRootView: View {
                             get: { viewModel.textDraft?.text ?? "" },
                             set: { viewModel.textDraft?.text = $0 }
                         ),
+                        draftID: textDraft.id,
                         font: .systemFont(ofSize: fontSize, weight: .semibold),
                         color: nsColor,
                         onCommit: { viewModel.commitTextDraft() }
                     )
+                    .id(textDraft.id)
                     .frame(width: 300, height: fontSize * 1.5)
                     .position(
                         x: coordinateTransformer.globalPointToLocal(textDraft.origin).x + 150,
@@ -253,6 +255,7 @@ enum OverlayGeometry {
 
 struct OverlayTextField: NSViewRepresentable {
     @Binding var text: String
+    let draftID: UUID
     let font: NSFont
     let color: NSColor
     let onCommit: () -> Void
@@ -273,6 +276,16 @@ struct OverlayTextField: NSViewRepresentable {
             field.window?.makeFirstResponder(field)
         }
         return field
+    }
+
+    static func dismantleNSView(_ nsView: NSTextField, coordinator: Coordinator) {
+        if let editor = nsView.currentEditor(), nsView.window?.firstResponder === editor {
+            nsView.abortEditing()
+            nsView.window?.makeFirstResponder(nil)
+        } else if nsView.window?.firstResponder === nsView {
+            nsView.window?.makeFirstResponder(nil)
+        }
+        nsView.delegate = nil
     }
 
     func updateNSView(_ nsView: NSTextField, context: Context) {

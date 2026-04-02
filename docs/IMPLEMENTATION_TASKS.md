@@ -20,9 +20,9 @@ This file is the execution board for implementation work. Use it with `docs/ARCH
 |---|---|
 | Current Task ID | `P3-T09` |
 | Current Phase | `3` |
-| Last Updated (UTC) | `2026-04-02 12:26` |
+| Last Updated (UTC) | `2026-04-02 12:50` |
 | Updated By | `agent` |
-| Notes | `Custom eraser cursor artwork now replaces the broken tinted symbol, and tool shortcuts now resume annotation from pass-through exactly like clicking a radial tool; remaining active blocker is still the manual macOS GUI checklist for Phase 3.` |
+| Notes | `Text draft handoff now commits the current note and starts the next one on the next main-loop turn, with explicit AppKit responder teardown; remaining active blocker is still the manual macOS GUI checklist for Phase 3.` |
 
 ## Phase Status Board
 
@@ -124,6 +124,7 @@ All previously listed items are `done`. The batch below was completed in this se
 | P4-T13 | Snapshot text tool config at edit-start to isolate from live changes | P4-T10 | `done` | `beginTextEditing` stores config snapshot; `commitTextDraft` uses snapshot; color/font unaffected by tool changes made while typing |
 | P4-T14 | Refresh default tool presets for requested annotation colors/sizes and red eraser cursor | P4-T08, P4-T09, P4-T10 | `done` | Text and highlighter default sizes are `14`; pen/highlighter/text default to yellow; arrow/rectangle/ellipse default to blue; eraser cursor icon renders red |
 | P4-T15 | Refine eraser cursor artwork and make tool shortcuts mirror radial tool clicks from pass-through mode | P4-T14, P3-T21 | `done` | Eraser cursor uses dedicated custom artwork instead of a broken tinted symbol, and pressing a tool shortcut while in pass-through exits pass-through, expands the radial, and selects that tool just like a click |
+| P4-T16 | Stabilize text draft handoff when clicking a new text location mid-edit | P4-T10 | `done` | Clicking a new text location while a draft is active commits the current draft, starts a new draft at the clicked point, and tears down the prior AppKit text responder cleanly |
 
 ### Phase 5: Multi-Display Support
 | ID | Task | Depends On | Status | Acceptance Criteria |
@@ -218,3 +219,4 @@ All previously listed items are `done`. The batch below was completed in this se
 | 2026-04-01 | P5-T06 | Re-scoped overlay sessions to a single display chosen from the mouse location when annotation starts, keeping exactly one overlay panel and one pass-through control panel alive for the session display instead of mirroring UI across all connected monitors | `swiftc -frontend -parse Pinnacle/Overlay/AppKitOverlayService.swift Pinnacle/Overlay/OverlayViewModel.swift` passed; `xcodebuild` unavailable (CommandLineTools) | P3-T09 |
 | 2026-04-02 | P4-T14 | Updated default annotation presets so text and highlighter sizes start at `14`, pen/highlighter/text default to yellow, arrow/rectangle/ellipse default to blue, and the eraser cursor icon renders red while keeping the same cursor hotspot; added a focused smoke test covering the preset values | `swiftc -frontend -parse Pinnacle/Domain/AppDomainModels.swift Pinnacle/Overlay/OverlayViewModel.swift Pinnacle/Overlay/OverlayPanel.swift PinnacleTests/PinnacleSmokeTests.swift` passed; `xcodebuild test -project Pinnacle.xcodeproj -scheme Pinnacle -destination 'platform=macOS' -derivedDataPath /tmp/PinnacleDerivedData -only-testing:PinnacleTests/PinnacleSmokeTests CODE_SIGNING_ALLOWED=NO` could not run because `xcode-select` points to CommandLineTools | P3-T09 |
 | 2026-04-02 | P4-T15 | Replaced the broken tinted-symbol eraser cursor with dedicated custom red eraser artwork, added an explicit `OverlayService.activateToolSelection` path so tool shortcuts can expand/select tools in the overlay UI, and routed tool selection through the same view-model activation helper used by radial clicks so pass-through mode now exits and resumes annotation exactly like clicking a tool | `swiftc -frontend -parse Pinnacle/Services/ServiceProtocols.swift Pinnacle/Services/StubServices.swift Pinnacle/App/AppStore.swift Pinnacle/Overlay/OverlayViewModel.swift Pinnacle/Overlay/AppKitOverlayService.swift Pinnacle/Overlay/OverlayPanel.swift PinnacleTests/PinnacleSmokeTests.swift` passed; `xcodebuild` unavailable because `xcode-select` points to CommandLineTools | P3-T09 |
+| 2026-04-02 | P4-T16 | Stabilized text-tool draft handoff by giving each draft its own identity, deferring new draft creation by one main-loop turn after committing an active draft, and explicitly dismantling the old `NSTextField` responder/editor before replacement so clicking a new text location mid-edit cleanly commits the old note and starts the next one | `swiftc -frontend -parse Pinnacle/Overlay/OverlayScene.swift Pinnacle/Overlay/OverlayViewModel.swift Pinnacle/Overlay/OverlayRootView.swift PinnacleTests/PinnacleSmokeTests.swift` passed; `xcodebuild` unavailable because `xcode-select` points to CommandLineTools | P3-T09 |

@@ -470,6 +470,31 @@ final class PinnacleSmokeTests: XCTestCase {
         XCTAssertNil(viewModel.selectedToolForOptions)
     }
 
+    func testClickingNewTextLocationCommitsCurrentDraftAndStartsAnother() async {
+        let viewModel = OverlayViewModel()
+        viewModel.toolState.activeTool = .text
+
+        viewModel.handleDragEnded(
+            startLocation: CGPoint(x: 40, y: 40),
+            location: CGPoint(x: 40, y: 40),
+            translation: .zero
+        )
+        viewModel.textDraft?.text = "First note"
+
+        viewModel.handleDragEnded(
+            startLocation: CGPoint(x: 160, y: 120),
+            location: CGPoint(x: 160, y: 120),
+            translation: .zero
+        )
+
+        await Task.yield()
+
+        XCTAssertEqual(viewModel.textItems.count, 1)
+        XCTAssertEqual(viewModel.textItems.first?.text, "First note")
+        XCTAssertEqual(viewModel.textDraft?.origin, CGPoint(x: 160, y: 120))
+        XCTAssertEqual(viewModel.textDraft?.text, "")
+    }
+
     func testActivateToolSelectionExitsPassThroughAndMirrorsToolClick() {
         let viewModel = OverlayViewModel()
         viewModel.isRadialExpanded = false
