@@ -71,6 +71,7 @@ extension NSCursor {
         image.lockFocus()
         NSColor.clear.set()
         NSBezierPath(rect: NSRect(origin: .zero, size: image.size)).fill()
+        NSColor.systemRed.set()
         symbol.draw(in: NSRect(x: 6, y: 6, width: 20, height: 20))
         image.unlockFocus()
         return NSCursor(image: image, hotSpot: NSPoint(x: 8, y: 8))

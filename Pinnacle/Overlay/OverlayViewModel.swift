@@ -47,7 +47,7 @@ final class OverlayViewModel: ObservableObject {
     private var hasInitializedRadialPosition = false
 
     var activeConfig: ToolConfig {
-        toolState.configs[toolState.activeTool] ?? ToolState.default.configs[.pen] ?? ToolConfig(colorHexRGBA: "#FF3B30FF", strokeWidth: 1, opacity: 1)
+        toolState.configs[toolState.activeTool] ?? ToolState.default.configs[.pen] ?? ToolConfig(colorHexRGBA: "#FFD60AFF", strokeWidth: 1, opacity: 1)
     }
 
     var activeExtendedOptions: ToolExtendedOptions {
@@ -175,7 +175,7 @@ final class OverlayViewModel: ObservableObject {
         guard isRadialExpanded,
               let tool = selectedToolForOptions,
               tool.hasConfigurableOptions else { return }
-        pendingConfig = toolState.configs[tool] ?? ToolState.default.configs[tool] ?? ToolState.default.configs[.pen] ?? ToolConfig(colorHexRGBA: "#FF3B30FF", strokeWidth: 1, opacity: 1)
+        pendingConfig = toolState.configs[tool] ?? ToolState.default.configs[tool] ?? ToolState.default.configs[.pen] ?? ToolConfig(colorHexRGBA: "#FFD60AFF", strokeWidth: 1, opacity: 1)
         pendingExtendedOptions = toolState.extendedOptions[tool] ?? .default
         isOptionsOpen = true
     }

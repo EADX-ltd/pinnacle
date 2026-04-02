@@ -462,14 +462,21 @@ final class PinnacleSmokeTests: XCTestCase {
         XCTAssertNil(viewModel.selectedToolForOptions)
     }
 
-    func testToolStateDefaultDrawingWidthsStartThin() {
+    func testToolStateDefaultToolPresetsMatchRequestedColorsAndSizes() {
         let state = ToolState.default
 
+        XCTAssertEqual(state.configs[.pen]?.colorHexRGBA, "#FFD60AFF")
+        XCTAssertEqual(state.configs[.highlighter]?.colorHexRGBA, "#FFD60A66")
+        XCTAssertEqual(state.configs[.text]?.colorHexRGBA, "#FFD60AFF")
+        XCTAssertEqual(state.configs[.arrow]?.colorHexRGBA, "#0A84FFFF")
+        XCTAssertEqual(state.configs[.rectangle]?.colorHexRGBA, "#0A84FFFF")
+        XCTAssertEqual(state.configs[.ellipse]?.colorHexRGBA, "#0A84FFFF")
         XCTAssertEqual(state.configs[.pen]?.strokeWidth, 1)
         XCTAssertEqual(state.configs[.arrow]?.strokeWidth, 1)
         XCTAssertEqual(state.configs[.rectangle]?.strokeWidth, 1)
         XCTAssertEqual(state.configs[.ellipse]?.strokeWidth, 1)
-        XCTAssertEqual(state.configs[.highlighter]?.strokeWidth, 12)
+        XCTAssertEqual(state.configs[.highlighter]?.strokeWidth, 14)
+        XCTAssertEqual(state.configs[.text]?.strokeWidth, 14)
     }
 
     func testTooltipIncludesShiftHintForConstrainedTool() {
