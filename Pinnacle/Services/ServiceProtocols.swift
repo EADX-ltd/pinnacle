@@ -11,6 +11,7 @@ protocol OverlayService {
     func startOverlay()
     func stopOverlay()
     func update(toolState: ToolState)
+    func activateToolSelection(_ tool: ToolKind)
     func undoLastChange()
     func redoLastChange()
     func clearAll(allowUndo: Bool)

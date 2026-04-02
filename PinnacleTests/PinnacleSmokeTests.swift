@@ -173,6 +173,14 @@ final class PinnacleSmokeTests: XCTestCase {
         XCTAssertEqual(harness.store.toolState.activeTool, .eraser)
     }
 
+    func testToolShortcutActivatesOverlaySelectionBehavior() throws {
+        let harness = makeStoreHarness()
+
+        harness.shortcutService.trigger(.selectRectangle)
+
+        XCTAssertEqual(harness.overlayService.activatedTools, [.rectangle])
+    }
+
     func testStopRecordingFromPausedReturnsToIdleWhenPausedFromRecording() throws {
         let harness = makeStoreHarness()
         harness.store.send(.startRecording)
@@ -462,6 +470,21 @@ final class PinnacleSmokeTests: XCTestCase {
         XCTAssertNil(viewModel.selectedToolForOptions)
     }
 
+    func testActivateToolSelectionExitsPassThroughAndMirrorsToolClick() {
+        let viewModel = OverlayViewModel()
+        viewModel.isRadialExpanded = false
+        viewModel.selectedToolForOptions = .pen
+        viewModel.isOptionsOpen = true
+        viewModel.enterPassThroughMode()
+
+        viewModel.activateToolSelection(.eraser)
+
+        XCTAssertFalse(viewModel.isPassThroughMode)
+        XCTAssertTrue(viewModel.isRadialExpanded)
+        XCTAssertEqual(viewModel.selectedToolForOptions, .eraser)
+        XCTAssertFalse(viewModel.isOptionsOpen)
+    }
+
     func testToolStateDefaultToolPresetsMatchRequestedColorsAndSizes() {
         let state = ToolState.default
 
@@ -633,6 +656,7 @@ private final class SpyOverlayService: OverlayService {
     private(set) var startCount = 0
     private(set) var stopCount = 0
     private(set) var updatedToolState: ToolState?
+    private(set) var activatedTools: [ToolKind] = []
     private(set) var undoCount = 0
     private(set) var redoCount = 0
     private(set) var clearAllInvocations: [Bool] = []
@@ -650,6 +674,10 @@ private final class SpyOverlayService: OverlayService {
 
     func update(toolState: ToolState) {
         updatedToolState = toolState
+    }
+
+    func activateToolSelection(_ tool: ToolKind) {
+        activatedTools.append(tool)
     }
 
     func undoLastChange() {

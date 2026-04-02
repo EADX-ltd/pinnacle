@@ -111,6 +111,10 @@ final class AppKitOverlayService: OverlayService {
         viewModel.toolState = toolState
     }
 
+    func activateToolSelection(_ tool: ToolKind) {
+        viewModel.activateToolSelection(tool)
+    }
+
     func undoLastChange() {
         viewModel.undoLastChange()
     }

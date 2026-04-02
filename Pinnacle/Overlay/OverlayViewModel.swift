@@ -239,18 +239,24 @@ final class OverlayViewModel: ObservableObject {
     }
 
     func selectPrimaryItem(_ item: RadialItem) {
-        if isPassThroughMode { exitPassThroughMode() }
-        activateRadialControl()
         switch item {
         case let .tool(tool):
-            if tool != selectedToolForOptions { isOptionsOpen = false }
-            selectedToolForOptions = tool
+            activateToolSelection(tool)
             commandHandler?(.selectTool(tool))
         case let .action(action):
+            if isPassThroughMode { exitPassThroughMode() }
+            activateRadialControl()
             selectedToolForOptions = nil
             isOptionsOpen = false
             commandHandler?(action)
         }
+    }
+
+    func activateToolSelection(_ tool: ToolKind) {
+        if isPassThroughMode { exitPassThroughMode() }
+        activateRadialControl()
+        if tool != selectedToolForOptions { isOptionsOpen = false }
+        selectedToolForOptions = tool
     }
 
     func tooltip(for item: RadialItem) -> String {

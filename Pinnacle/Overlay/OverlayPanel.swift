@@ -61,19 +61,37 @@ final class PassThroughContainerView: NSView {
 }
 extension NSCursor {
     static let pinnacleEraser: NSCursor = {
-        guard let symbol = NSImage(
-            systemSymbolName: "eraser.fill",
-            accessibilityDescription: "Eraser"
-        )?.withSymbolConfiguration(.init(pointSize: 18, weight: .medium)) else {
-            return .crosshair
-        }
         let image = NSImage(size: NSSize(width: 32, height: 32))
         image.lockFocus()
         NSColor.clear.set()
         NSBezierPath(rect: NSRect(origin: .zero, size: image.size)).fill()
-        NSColor.systemRed.set()
-        symbol.draw(in: NSRect(x: 6, y: 6, width: 20, height: 20))
+        let transform = NSAffineTransform()
+        transform.translateX(by: 16, yBy: 16)
+        transform.rotate(byDegrees: -35)
+        transform.translateX(by: -16, yBy: -16)
+        transform.concat()
+
+        let bodyRect = NSRect(x: 9, y: 7, width: 14, height: 18)
+        let bodyPath = NSBezierPath(roundedRect: bodyRect, xRadius: 3, yRadius: 3)
+        NSColor.systemRed.setFill()
+        bodyPath.fill()
+
+        let bandPath = NSBezierPath(rect: NSRect(x: 9, y: 14, width: 14, height: 4))
+        NSColor.white.withAlphaComponent(0.9).setFill()
+        bandPath.fill()
+
+        let edgePath = NSBezierPath()
+        edgePath.move(to: NSPoint(x: 9, y: 11))
+        edgePath.line(to: NSPoint(x: 23, y: 11))
+        edgePath.lineWidth = 2
+        (NSColor.systemRed.blended(withFraction: 0.3, of: .black) ?? NSColor.systemRed).setStroke()
+        edgePath.stroke()
+
+        let outlinePath = NSBezierPath(roundedRect: bodyRect, xRadius: 3, yRadius: 3)
+        outlinePath.lineWidth = 1.5
+        NSColor.black.withAlphaComponent(0.35).setStroke()
+        outlinePath.stroke()
         image.unlockFocus()
-        return NSCursor(image: image, hotSpot: NSPoint(x: 8, y: 8))
+        return NSCursor(image: image, hotSpot: NSPoint(x: 7, y: 25))
     }()
 }

@@ -133,6 +133,7 @@ final class AppStore: ObservableObject {
         case let .selectTool(tool):
             toolState.activeTool = tool
             container.overlayService.update(toolState: toolState)
+            container.overlayService.activateToolSelection(tool)
         case .undo:
             container.overlayService.undoLastChange()
         case .redo:
