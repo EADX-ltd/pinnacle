@@ -48,3 +48,4 @@ These instructions apply to the entire repository.
 - Before coding, set exactly one task to `in_progress` in `docs/IMPLEMENTATION_TASKS.md`.
 - After coding, mark the task `done` or `blocked` and update `Current Execution State`, `Execution Log`, and `Blockers Log` (if needed).
 - Do not keep more than one `in_progress` task in the task board.
+- When using `NSTextField` or `NSTextView` in a floating overlay window (which may not be fully active), disable smart features (`allowsEditingTextAttributes = false`, `allowsCharacterPickerTouchBarItem = false`, `isAutomaticSpellingCorrectionEnabled = false`, etc.) to prevent `ViewBridge` and `RemoteViewService` errors and task name port crashes.

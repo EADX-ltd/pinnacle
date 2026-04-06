@@ -271,6 +271,8 @@ struct OverlayTextField: NSViewRepresentable {
         field.font = font
         field.textColor = color
         field.alignment = .left
+        field.allowsEditingTextAttributes = false
+        field.allowsCharacterPickerTouchBarItem = false
         field.delegate = context.coordinator
         DispatchQueue.main.async {
             field.window?.makeFirstResponder(field)
@@ -300,6 +302,17 @@ struct OverlayTextField: NSViewRepresentable {
     final class Coordinator: NSObject, NSTextFieldDelegate {
         var parent: OverlayTextField
         init(_ parent: OverlayTextField) { self.parent = parent }
+
+        func controlTextDidBeginEditing(_ obj: Notification) {
+            guard let field = obj.object as? NSTextField,
+                  let textView = field.currentEditor() as? NSTextView else { return }
+            textView.isAutomaticSpellingCorrectionEnabled = false
+            textView.isAutomaticTextReplacementEnabled = false
+            textView.isAutomaticQuoteSubstitutionEnabled = false
+            textView.isAutomaticDashSubstitutionEnabled = false
+            textView.isAutomaticDataDetectionEnabled = false
+            textView.isAutomaticLinkDetectionEnabled = false
+        }
 
         func controlTextDidChange(_ n: Notification) {
             guard let f = n.object as? NSTextField else { return }
