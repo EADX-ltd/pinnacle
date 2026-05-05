@@ -29,6 +29,11 @@ final class AppStore: ObservableObject {
     @Published private(set) var sessionMode: SessionMode = .idle
     @Published private(set) var toolState: ToolState = .default
     @Published private(set) var lastErrorMessage: String?
+    @Published var capturesSystemAudio: Bool = false {
+        didSet {
+            container.recordingService.capturesSystemAudio = capturesSystemAudio
+        }
+    }
 
     private let container: AppContainer
     private var modeBeforePause: SessionMode?
@@ -38,6 +43,7 @@ final class AppStore: ObservableObject {
         self.container = container
         configureOverlay()
         configureShortcuts()
+        configureRecording()
     }
 
     func invalidate() {
@@ -137,13 +143,13 @@ final class AppStore: ObservableObject {
                 try reduceRecordingCommand(.pauseRecording)
             }
         case .pauseRecording:
-            // TODO: Wire pauseRecording to concrete RecordingService in recording phase.
             guard sessionMode == .recording || sessionMode == .recordingAndAnnotating else { return }
+            try container.recordingService.pauseRecording()
             modeBeforePause = sessionMode
             sessionMode = .paused
         case .resumeRecording:
-            // TODO: Wire resumeRecording to concrete RecordingService in recording phase.
             guard sessionMode == .paused else { return }
+            try container.recordingService.resumeRecording()
             sessionMode = modeBeforePause ?? .recording
             modeBeforePause = nil
         default:
@@ -237,6 +243,25 @@ final class AppStore: ObservableObject {
             container.overlayService.setShortcutBindings(resolvedBindings)
         } catch {
             lastErrorMessage = "Failed to register shortcuts: \(error.localizedDescription)"
+        }
+    }
+
+    private func configureRecording() {
+        container.recordingService.capturesSystemAudio = capturesSystemAudio
+        container.recordingService.setErrorHandler { [weak self] message in
+            guard let self else { return }
+            lastErrorMessage = message
+            if isRecording {
+                modeBeforePause = nil
+                switch sessionMode {
+                case .recording, .paused:
+                    sessionMode = .idle
+                case .recordingAndAnnotating:
+                    sessionMode = .annotating
+                default:
+                    break
+                }
+            }
         }
     }
 

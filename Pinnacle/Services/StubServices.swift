@@ -24,18 +24,37 @@ struct NoOpOverlayService: OverlayService {
 @MainActor
 final class InMemoryRecordingService: RecordingService {
     private(set) var isRecording = false
+    private(set) var isPaused = false
+    private(set) var outputURL: URL?
+    var capturesSystemAudio: Bool = false
 
     func startRecording() throws {
         isRecording = true
+        isPaused = false
     }
 
     func stopRecording() throws {
         isRecording = false
+        isPaused = false
     }
+
+    func pauseRecording() throws {
+        guard isRecording else { return }
+        isPaused = true
+    }
+
+    func resumeRecording() throws {
+        guard isRecording else { return }
+        isPaused = false
+    }
+
+    func setErrorHandler(_ handler: @escaping @MainActor (String) -> Void) {}
 }
 
 struct NoOpPermissionService: PermissionService {
     func refreshPermissions() async -> PermissionStatus {
         .notDetermined
     }
+
+    func requestScreenRecordingAccess() {}
 }

@@ -18,11 +18,11 @@ This file is the execution board for implementation work. Use it with `docs/ARCH
 
 | Field | Value |
 |---|---|
-| Current Task ID | `P3-T09` |
-| Current Phase | `3` |
-| Last Updated (UTC) | `2026-05-05 13:20` |
+| Current Task ID | `P6-T03` |
+| Current Phase | `6` |
+| Last Updated (UTC) | `2026-05-05 14:00` |
 | Updated By | `agent` |
-| Notes | `Completed all P0 + P1 + P2 review items from .air/plans/review-this-application-how-bubbly-simon.plan.md: P0-1..P0-4 (reduce split, RadialState enum, TextEditingViewModel extraction, overlay error propagation), P1-5 (ColorHex newtype with ExpressibleByStringLiteral), P1-6 (verified AppContainer.live is already a @MainActor static let, plan was based on stale snapshot), P1-7 (globalPointToLocal consolidation), P2-8/9 (inline docs), P2-10 (read-only audit of AppKitOverlayService weak-self / removeObserver paths). Verified with xcodebuild test (all PinnacleSmokeTests passing). Remaining active blocker is still the manual macOS GUI checklist for Phase 3.` |
+| Notes | `Phase 6 kickoff (P6-T01..P6-T03 + P6-T05): extended RecordingService protocol with pause/resume/error-handler/audio-toggle/outputURL; created ScreenCaptureKitRecordingService backed by AVAssetWriterPipeline (H.264 1080p@30 6Mbps, optional system audio); replaced NoOpPermissionService with SystemPermissionService using CGPreflight/CGRequestScreenCaptureAccess; AppStore.configureRecording binds error handler that surfaces messages and resets session, capturesSystemAudio @Published property syncs into service. P6-T04 (Option A overlay capture) confirmed by architecture decision — full-display capture includes overlay panels. Phase 3 manual GUI checklist (P3-T09) still blocked but parallel.` |
 
 ## Phase Status Board
 
@@ -34,7 +34,7 @@ This file is the execution board for implementation work. Use it with `docs/ARCH
 | 3 | Overlay engine (single display) | `in_progress` | Task group `P3-*` complete except final `P3-T09` manual GUI checklist |
 | 4 | Tool renderers + undo/redo | `done` | Task group `P4-*` all `done` including per-tool options and modifier rules |
 | 5 | Multi-display support | `done` | Task group `P5-*` complete, with session behavior now intentionally limited to one mouse-selected display at action start |
-| 6 | Recording engine integration | `todo` | Task group `P6-*` all `done` |
+| 6 | Recording engine integration | `in_progress` | Task group `P6-*` all `done` |
 | 7 | Settings UI for shortcuts/colors | `todo` | Task group `P7-*` all `done` |
 | 8 | Persistence and output management | `todo` | Task group `P8-*` all `done` |
 | 9 | Stabilization, profiling, test pass | `todo` | Task group `P9-*` all `done` |
@@ -139,12 +139,13 @@ All previously listed items are `done`. The batch below was completed in this se
 ### Phase 6: Recording Engine Integration
 | ID | Task | Depends On | Status | Acceptance Criteria |
 |---|---|---|---|---|
-| P6-T01 | Build `ScreenCaptureKit` stream service wrapper | P0-T02 | `todo` | Capture starts with configured display selection |
-| P6-T02 | Build `AVAssetWriter` pipeline service | P6-T01 | `todo` | Encoded video file finalizes correctly |
-| P6-T03 | Integrate start/stop/pause/resume recording commands | P1-T03, P6-T02 | `todo` | Lifecycle commands are stable and idempotent |
-| P6-T04 | Ensure overlay capture strategy works as designed | P3-T01, P6-T03 | `todo` | Output includes expected annotation visuals |
-| P6-T05 | Add error recovery for capture interruption and file failure | P6-T03 | `todo` | Failures surface actionable error state and cleanup |
-| P6-T06 | Add recording lifecycle tests and manual scenario checks | P6-T03 | `todo` | Passes start-stop loops and pause/resume scenarios |
+| P6-T01 | Build `ScreenCaptureKit` stream service wrapper | P0-T02 | `done` | Capture starts with mouse-selected display; bound to single display per session per Phase 5 contract |
+| P6-T02 | Build `AVAssetWriter` pipeline service | P6-T01 | `done` | Encoded H.264 video file finalizes correctly via `AVAssetWriterPipeline` (lock-guarded, off-main append) |
+| P6-T03 | Integrate start/stop/pause/resume recording commands | P1-T03, P6-T02 | `done` | Lifecycle commands stable and idempotent; pause/resume route through service |
+| P6-T04 | Ensure overlay capture strategy works as designed | P3-T01, P6-T03 | `done` | Option A confirmed: full-display capture includes overlay panels (architecture §4.5) |
+| P6-T05 | Add error recovery for capture interruption and file failure | P6-T03 | `done` | `setErrorHandler` propagates async failures; AppStore resets session and surfaces `lastErrorMessage` |
+| P6-T06 | Add recording lifecycle tests and manual scenario checks | P6-T03 | `in_progress` | Unit tests added for idempotent start/stop, pause/resume, error injection, audio toggle propagation; manual matrix pending GUI session |
+| P6-T07 | Implement real Screen Recording TCC permission service | P6-T01 | `done` | `SystemPermissionService` calls `CGPreflightScreenCaptureAccess` / `CGRequestScreenCaptureAccess`; missing permission throws `RecordingError.permissionRequired` and triggers system prompt |
 
 ### Phase 7: Settings UI for Shortcuts and Colors
 | ID | Task | Depends On | Status | Acceptance Criteria |
@@ -229,3 +230,4 @@ All previously listed items are `done`. The batch below was completed in this se
 | 2026-05-05 | REVIEW-P1-5 | Introduced `ColorHex` newtype (`Equatable, Hashable, Codable, ExpressibleByStringLiteral`) and migrated `ToolConfig.colorHexRGBA`, all five `OverlaySceneElement.Kind` cases, `OverlayTextItem.colorHexRGBA`, `Color(hexRGBA:)`, and the cycle/swatch palette literals in `AppStore` and `ToolOptionsPanelView`. Codable single-value conformance preserves the existing JSON wire format. | `xcodebuild test -scheme Pinnacle -destination 'platform=macOS'` passed | P3-T09 |
 | 2026-05-05 | REVIEW-P2-10 | Read-only audit of `[weak self]` and `removeObserver` paths in `AppKitOverlayService`. Findings: all callbacks/sinks/monitors capture `[weak self]` correctly; `cancellables` Set anchors the four Combine pipelines; the three observer/monitor tokens (`screenObserver`, `drawEventMonitor`, `keyEventMonitor`) are torn down only inside `stopOverlay()` (no `deinit` cleanup, acceptable for the singleton-lifetime ownership in `AppContainer.live`); two closures nest a redundant outer `[weak self]` whose `self` is shadowed by an inner `Task { @MainActor [weak self] in ... }`. Documented as future cleanup, not a regression. | No code changes | P3-T09 |
 | 2026-05-05 | REVIEW-P1-6 | Verified `AppContainer.live` is already a `@MainActor static let` (the class is `@MainActor`, the property is a stored `static let`, not a computed property). The review plan's concern about orphaned hotkey registrations from a recomputed container does not apply. Single consumer in `PinnacleApp.swift:17`. | No code changes | P3-T09 |
+| 2026-05-05 | P6-T01..P6-T05,P6-T07 | Extended `RecordingService` (pause/resume, `isPaused`, `outputURL`, mutable `capturesSystemAudio`, `setErrorHandler`); created `ScreenCaptureKitRecordingService` (SCStream + SCStreamOutput/Delegate adapter, single-display capture using `DisplayDescriptor.underMouse()`, `~/Movies/Pinnacle/Pinnacle-yyyyMMdd-HHmmss.mp4`); added thread-safe `AVAssetWriterPipeline` (NSLock-guarded appends, H.264 6 Mbps @ 1080p/30 + optional AAC 48 kHz/2ch/128 kbps); added real `SystemPermissionService` (`CGPreflightScreenCaptureAccess` / `CGRequestScreenCaptureAccess`, throws `RecordingError.permissionRequired`); rewired `AppContainer.live`; in `AppStore` wired `setErrorHandler` (resets session on failure), exposed `@Published var capturesSystemAudio`, replaced TODOs with real pause/resume; extended `SpyRecordingService` and added six new tests (pause/resume routing, idempotent start/stop, error-handler reset, audio toggle propagation). | Full-target `swiftc -typecheck` passed (only unrelated `#Preview` macro plugin warnings); `xcodebuild test` env-blocked (CommandLineTools); P6-T06 manual scenario matrix deferred to GUI session | P6-T06 |

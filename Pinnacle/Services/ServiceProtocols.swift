@@ -33,14 +33,21 @@ enum OverlayAction: Equatable {
 }
 
 @MainActor
-protocol RecordingService {
+protocol RecordingService: AnyObject {
     var isRecording: Bool { get }
+    var isPaused: Bool { get }
+    var outputURL: URL? { get }
+    var capturesSystemAudio: Bool { get set }
     func startRecording() throws
     func stopRecording() throws
+    func pauseRecording() throws
+    func resumeRecording() throws
+    func setErrorHandler(_ handler: @escaping @MainActor (String) -> Void)
 }
 
 protocol PermissionService {
     func refreshPermissions() async -> PermissionStatus
+    func requestScreenRecordingAccess()
 }
 
 @MainActor

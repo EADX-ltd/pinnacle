@@ -49,3 +49,13 @@ extension NSScreen {
         )
     }
 }
+
+extension DisplayDescriptor {
+    static func underMouse() -> DisplayDescriptor? {
+        let location = NSEvent.mouseLocation
+        if let descriptor = NSScreen.screens.first(where: { $0.frame.contains(location) })?.displayDescriptor {
+            return descriptor
+        }
+        return NSScreen.main?.displayDescriptor ?? NSScreen.screens.first?.displayDescriptor
+    }
+}

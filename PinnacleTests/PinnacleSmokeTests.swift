@@ -110,6 +110,67 @@ final class PinnacleSmokeTests: XCTestCase {
         XCTAssertEqual(harness.store.sessionMode, .idle)
     }
 
+    func testPauseRecordingInvokesServicePause() throws {
+        let harness = makeStoreHarness()
+        harness.store.send(.startRecording)
+
+        harness.store.send(.pauseRecording)
+
+        XCTAssertEqual(harness.recordingService.pauseCount, 1)
+        XCTAssertTrue(harness.recordingService.isPaused)
+    }
+
+    func testResumeRecordingInvokesServiceResume() throws {
+        let harness = makeStoreHarness()
+        harness.store.send(.startRecording)
+        harness.store.send(.pauseRecording)
+
+        harness.store.send(.resumeRecording)
+
+        XCTAssertEqual(harness.recordingService.resumeCount, 1)
+        XCTAssertFalse(harness.recordingService.isPaused)
+    }
+
+    func testStartRecordingIsIdempotentWhenAlreadyRecording() throws {
+        let harness = makeStoreHarness()
+        harness.store.send(.startRecording)
+
+        harness.store.send(.startRecording)
+
+        XCTAssertEqual(harness.recordingService.startCount, 1)
+    }
+
+    func testStopRecordingIsIdempotentWhenIdle() throws {
+        let harness = makeStoreHarness()
+
+        harness.store.send(.stopRecording)
+
+        XCTAssertEqual(harness.recordingService.stopCount, 0)
+        XCTAssertEqual(harness.store.sessionMode, .idle)
+    }
+
+    func testRecordingServiceErrorHandlerSurfacesMessageAndResetsSession() throws {
+        let harness = makeStoreHarness()
+        harness.store.send(.startRecording)
+        XCTAssertEqual(harness.store.sessionMode, .recording)
+
+        harness.recordingService.emitError("disk full")
+
+        XCTAssertEqual(harness.store.lastErrorMessage, "disk full")
+        XCTAssertEqual(harness.store.sessionMode, .idle)
+    }
+
+    func testCapturesSystemAudioToggleSyncsToService() throws {
+        let harness = makeStoreHarness()
+        XCTAssertFalse(harness.recordingService.capturesSystemAudio)
+
+        harness.store.capturesSystemAudio = true
+        harness.store.send(.startRecording)
+
+        XCTAssertTrue(harness.recordingService.capturesSystemAudio)
+        XCTAssertTrue(harness.recordingService.capturedAudioOnLastStart)
+    }
+
     func testShortcutRegistrationUsesDefaultBindingsWhenStoredBindingsConflict() throws {
         let defaults = UserDefaults(suiteName: suiteName) ?? .standard
         let preferencesService = UserDefaultsPreferencesService(defaults: defaults)
@@ -747,9 +808,16 @@ private final class SpyOverlayService: OverlayService {
 @MainActor
 private final class SpyRecordingService: RecordingService {
     private(set) var isRecording = false
+    private(set) var isPaused = false
+    private(set) var outputURL: URL?
+    var capturesSystemAudio: Bool = false
     private(set) var startCount = 0
     private(set) var stopCount = 0
+    private(set) var pauseCount = 0
+    private(set) var resumeCount = 0
+    private(set) var capturedAudioOnLastStart: Bool = false
     private let shouldThrowOnStart: Bool
+    private var errorHandler: (@MainActor (String) -> Void)?
 
     init(shouldThrowOnStart: Bool = false) {
         self.shouldThrowOnStart = shouldThrowOnStart
@@ -760,12 +828,36 @@ private final class SpyRecordingService: RecordingService {
             throw RecordingStartError.failed
         }
         isRecording = true
+        isPaused = false
+        capturedAudioOnLastStart = capturesSystemAudio
         startCount += 1
+        outputURL = URL(fileURLWithPath: "/tmp/pinnacle-spy-\(startCount).mp4")
     }
 
     func stopRecording() throws {
         isRecording = false
+        isPaused = false
         stopCount += 1
+    }
+
+    func pauseRecording() throws {
+        guard isRecording else { return }
+        isPaused = true
+        pauseCount += 1
+    }
+
+    func resumeRecording() throws {
+        guard isRecording else { return }
+        isPaused = false
+        resumeCount += 1
+    }
+
+    func setErrorHandler(_ handler: @escaping @MainActor (String) -> Void) {
+        errorHandler = handler
+    }
+
+    func emitError(_ message: String) {
+        errorHandler?(message)
     }
 }
 
