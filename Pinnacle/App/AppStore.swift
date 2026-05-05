@@ -87,23 +87,39 @@ final class AppStore: ObservableObject {
     private func reduce(_ command: CommandID) throws {
         switch command {
         case .toggleAnnotation:
-            switch sessionMode {
-            case .idle:
-                container.overlayService.startOverlay()
-                sessionMode = .annotating
-            case .annotating:
-                container.overlayService.stopOverlay()
-                sessionMode = .idle
-            case .recording:
-                container.overlayService.startOverlay()
-                sessionMode = .recordingAndAnnotating
-            case .recordingAndAnnotating:
-                container.overlayService.stopOverlay()
-                sessionMode = .recording
-            case .paused:
-                // Intentional until recording engine pause/resume is wired.
-                break
-            }
+            try reduceAnnotationCommand(command)
+        case .startRecording, .stopRecording, .toggleRecording,
+             .pauseRecording, .resumeRecording, .togglePauseRecording:
+            try reduceRecordingCommand(command)
+        case .selectTool, .undo, .redo, .clearAll,
+             .cycleColors, .increaseStroke, .decreaseStroke, .toggleRadialControl:
+            try reduceToolCommand(command)
+        }
+    }
+
+    private func reduceAnnotationCommand(_ command: CommandID) throws {
+        guard case .toggleAnnotation = command else { return }
+        switch sessionMode {
+        case .idle:
+            container.overlayService.startOverlay()
+            sessionMode = .annotating
+        case .annotating:
+            container.overlayService.stopOverlay()
+            sessionMode = .idle
+        case .recording:
+            container.overlayService.startOverlay()
+            sessionMode = .recordingAndAnnotating
+        case .recordingAndAnnotating:
+            container.overlayService.stopOverlay()
+            sessionMode = .recording
+        case .paused:
+            // Intentional until recording engine pause/resume is wired.
+            break
+        }
+    }
+
+    private func reduceRecordingCommand(_ command: CommandID) throws {
+        switch command {
         case .startRecording:
             try startRecording()
         case .stopRecording:
@@ -116,9 +132,9 @@ final class AppStore: ObservableObject {
             }
         case .togglePauseRecording:
             if sessionMode == .paused {
-                try reduce(.resumeRecording)
+                try reduceRecordingCommand(.resumeRecording)
             } else {
-                try reduce(.pauseRecording)
+                try reduceRecordingCommand(.pauseRecording)
             }
         case .pauseRecording:
             // TODO: Wire pauseRecording to concrete RecordingService in recording phase.
@@ -130,6 +146,13 @@ final class AppStore: ObservableObject {
             guard sessionMode == .paused else { return }
             sessionMode = modeBeforePause ?? .recording
             modeBeforePause = nil
+        default:
+            break
+        }
+    }
+
+    private func reduceToolCommand(_ command: CommandID) throws {
+        switch command {
         case let .selectTool(tool):
             toolState.activeTool = tool
             container.overlayService.update(toolState: toolState)
@@ -141,7 +164,7 @@ final class AppStore: ObservableObject {
         case .clearAll:
             container.overlayService.clearAll(allowUndo: true)
         case .cycleColors:
-            let palette = ["#FF3B30FF", "#0A84FFFF", "#34C759FF", "#FFD60AFF", "#AF52DEFF", "#FFFFFFFF", "#FF9500FF"]
+            let palette: [ColorHex] = ["#FF3B30FF", "#0A84FFFF", "#34C759FF", "#FFD60AFF", "#AF52DEFF", "#FFFFFFFF", "#FF9500FF"]
             guard var config = toolState.configs[toolState.activeTool] else { break }
             let idx = palette.firstIndex(of: config.colorHexRGBA) ?? -1
             config.colorHexRGBA = palette[(idx + 1) % palette.count]
@@ -160,6 +183,8 @@ final class AppStore: ObservableObject {
         case .toggleRadialControl:
             isRadialControlVisible.toggle()
             container.overlayService.setRadialControlVisible(isRadialControlVisible)
+        default:
+            break
         }
     }
 
@@ -218,6 +243,9 @@ final class AppStore: ObservableObject {
     private func configureOverlay() {
         container.overlayService.update(toolState: toolState)
         container.overlayService.setRadialControlVisible(isRadialControlVisible)
+        container.overlayService.setErrorHandler { [weak self] message in
+            self?.lastErrorMessage = message
+        }
         container.overlayService.setCommandHandler { [weak self] action in
             guard let self else { return }
             switch action {

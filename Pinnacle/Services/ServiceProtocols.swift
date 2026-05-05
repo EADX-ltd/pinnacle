@@ -18,6 +18,7 @@ protocol OverlayService {
     func setRadialControlVisible(_ isVisible: Bool)
     func setShortcutBindings(_ bindings: [ShortcutBinding])
     func setCommandHandler(_ handler: @escaping @MainActor (OverlayAction) -> Void)
+    func setErrorHandler(_ handler: @escaping @MainActor (String) -> Void)
 }
 
 enum OverlayAction: Equatable {

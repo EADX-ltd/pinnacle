@@ -2,6 +2,17 @@ import Combine
 import Foundation
 import SwiftUI
 
+// Single source of truth for the radial control. Replaces four
+// previously-decoupled bools (`isRadialExpanded`, `isOptionsOpen`,
+// `isPassThroughMode`, `selectedToolForOptions`) so impossible
+// combinations (e.g. options open while collapsed) are unrepresentable.
+enum RadialState: Equatable {
+    case collapsed
+    case expanded(selectedToolForOptions: ToolKind?)
+    case optionsOpen(ToolKind)
+    case passThrough
+}
+
 @MainActor
 final class OverlayViewModel: ObservableObject {
     enum RadialItem: Identifiable, Equatable {
@@ -20,17 +31,20 @@ final class OverlayViewModel: ObservableObject {
     @Published var sceneElements: [OverlaySceneElement] = []
     @Published var previewElement: OverlaySceneElement?
     @Published var textItems: [OverlayTextItem] = []
-    @Published var textDraft: TextDraft?
     @Published var isOverlayVisible = false
     @Published var isRadialControlEnabled = true
-    @Published var isRadialExpanded = false
-    @Published var isPassThroughMode = false
-    @Published var selectedToolForOptions: ToolKind?
-    @Published var isOptionsOpen = false
+    @Published var radialState: RadialState = .collapsed
     @Published var pendingConfig: ToolConfig = ToolState.default.configs[.pen]!
     @Published var pendingExtendedOptions: ToolExtendedOptions = .default
     @Published var radialCenter = CGPoint(x: 220, y: 220)
     @Published var shortcutLabelByCommand: [ShortcutCommandID: String] = [:]
+
+    let textEditing = TextEditingViewModel()
+
+    var textDraft: TextDraft? {
+        get { textEditing.textDraft }
+        set { textEditing.textDraft = newValue }
+    }
 
     var commandHandler: (@MainActor (OverlayAction) -> Void)?
     var strokeDurationRecorder: ((Double) -> Void)?
@@ -41,10 +55,54 @@ final class OverlayViewModel: ObservableObject {
     private var drawingStartPoint: CGPoint?
     private var currentStrokePoints: [CGPoint] = []
     private var strokeStartTime: Date?
-    private var textDraftConfig: ToolConfig?
-    private var textDraftExtendedOptions: ToolExtendedOptions?
     private let radialEdgeInset: CGFloat = 56
     private var hasInitializedRadialPosition = false
+    private var textEditingCancellable: AnyCancellable?
+
+    init() {
+        textEditing.configForActiveToolProvider = { [weak self] in
+            guard let self else { return nil }
+            return toolState.configs[toolState.activeTool]
+        }
+        textEditing.extendedOptionsForActiveToolProvider = { [weak self] in
+            guard let self else { return nil }
+            return toolState.extendedOptions[toolState.activeTool]
+        }
+        textEditing.onCommit = { [weak self] text, origin, config, extOpts in
+            self?.commitTextElement(text: text, origin: origin, config: config, extOpts: extOpts)
+        }
+        textEditing.onEditingActiveChanged = { [weak self] active in
+            self?.onTextEditingActive?(active)
+        }
+        textEditingCancellable = textEditing.objectWillChange.sink { [weak self] _ in
+            self?.objectWillChange.send()
+        }
+    }
+
+    var isRadialExpanded: Bool {
+        switch radialState {
+        case .expanded, .optionsOpen: return true
+        case .collapsed, .passThrough: return false
+        }
+    }
+
+    var isOptionsOpen: Bool {
+        if case .optionsOpen = radialState { return true }
+        return false
+    }
+
+    var isPassThroughMode: Bool {
+        if case .passThrough = radialState { return true }
+        return false
+    }
+
+    var selectedToolForOptions: ToolKind? {
+        switch radialState {
+        case let .expanded(tool): return tool
+        case let .optionsOpen(tool): return tool
+        case .collapsed, .passThrough: return nil
+        }
+    }
 
     var activeConfig: ToolConfig {
         toolState.configs[toolState.activeTool] ?? ToolState.default.configs[.pen] ?? ToolConfig(colorHexRGBA: "#FFD60AFF", strokeWidth: 1, opacity: 1)
@@ -57,11 +115,11 @@ final class OverlayViewModel: ObservableObject {
     // Snapshot config used while text is being edited – prevents live changes
     // from options panel affecting the in-progress text element.
     var textDraftActiveConfig: ToolConfig {
-        textDraftConfig ?? activeConfig
+        textEditing.textDraftConfig ?? activeConfig
     }
 
     var textDraftActiveExtendedOptions: ToolExtendedOptions {
-        textDraftExtendedOptions ?? activeExtendedOptions
+        textEditing.textDraftExtendedOptions ?? activeExtendedOptions
     }
 
     var hudText: String {
@@ -87,6 +145,11 @@ final class OverlayViewModel: ObservableObject {
         ]
     }
 
+    // Coordinate contract: `startLocation`/`location` are GLOBAL points already
+    // produced by `DisplayCoordinateTransformer.localPointToGlobal`. The view
+    // model stores everything in global space; only `OverlayRootView` converts
+    // back to local space for rendering via `globalPointToLocal`. Mixing the
+    // two spaces silently shifts annotations on multi-display / scaled setups.
     func handleDragChanged(startLocation: CGPoint, location: CGPoint, isShiftConstrained: Bool = false) {
         switch toolState.activeTool {
         case .pen, .highlighter:
@@ -119,19 +182,14 @@ final class OverlayViewModel: ObservableObject {
     }
 
     func commitTextDraft() {
-        guard let textDraft else { return }
-        let trimmed = textDraft.text.trimmingCharacters(in: .whitespacesAndNewlines)
-        let config = textDraftConfig ?? activeConfig
-        let extOpts = textDraftExtendedOptions ?? activeExtendedOptions
-        self.textDraft = nil
-        textDraftConfig = nil
-        textDraftExtendedOptions = nil
-        onTextEditingActive?(false)
-        guard !trimmed.isEmpty else { return }
+        textEditing.commitTextDraft()
+    }
+
+    private func commitTextElement(text: String, origin: CGPoint, config: ToolConfig, extOpts: ToolExtendedOptions) {
         let element = OverlaySceneElement(
             kind: .text(
-                text: trimmed,
-                origin: textDraft.origin,
+                text: text,
+                origin: origin,
                 fontSize: CGFloat(config.strokeWidth),
                 colorHexRGBA: config.colorHexRGBA,
                 opacity: config.opacity,
@@ -162,37 +220,36 @@ final class OverlayViewModel: ObservableObject {
 
     func activateRadialControl() {
         guard isRadialControlEnabled else { return }
-        if !isRadialExpanded { isRadialExpanded = true }
+        if case .collapsed = radialState {
+            radialState = .expanded(selectedToolForOptions: nil)
+        }
     }
 
     func collapseRadialControl() {
-        isRadialExpanded = false
-        selectedToolForOptions = nil
-        isOptionsOpen = false
+        radialState = .collapsed
     }
 
     func openOptions() {
-        guard isRadialExpanded,
-              let tool = selectedToolForOptions,
+        guard case let .expanded(maybeTool) = radialState,
+              let tool = maybeTool,
               tool.hasConfigurableOptions else { return }
         pendingConfig = toolState.configs[tool] ?? ToolState.default.configs[tool] ?? ToolState.default.configs[.pen] ?? ToolConfig(colorHexRGBA: "#FFD60AFF", strokeWidth: 1, opacity: 1)
         pendingExtendedOptions = toolState.extendedOptions[tool] ?? .default
-        isOptionsOpen = true
+        radialState = .optionsOpen(tool)
     }
 
     func confirmOptions() {
-        guard let tool = selectedToolForOptions else {
-            isOptionsOpen = false
-            return
-        }
+        guard case let .optionsOpen(tool) = radialState else { return }
         toolState.configs[tool] = pendingConfig
         toolState.extendedOptions[tool] = pendingExtendedOptions
         commandHandler?(.applyToolOptions(tool, pendingConfig, pendingExtendedOptions))
-        isOptionsOpen = false
+        radialState = .expanded(selectedToolForOptions: tool)
     }
 
     func cancelOptions() {
-        isOptionsOpen = false
+        if case let .optionsOpen(tool) = radialState {
+            radialState = .expanded(selectedToolForOptions: tool)
+        }
     }
 
     func toggleOptions() {
@@ -200,19 +257,19 @@ final class OverlayViewModel: ObservableObject {
     }
 
     func handleCenterTap() {
-        if isPassThroughMode {
+        switch radialState {
+        case .passThrough:
             exitPassThroughMode()
             activateRadialControl()
-            return
-        }
-
-        if isRadialExpanded {
-            if let tool = selectedToolForOptions, tool.hasConfigurableOptions {
+        case let .expanded(maybeTool):
+            if let tool = maybeTool, tool.hasConfigurableOptions {
                 toggleOptions()
             } else {
                 collapseRadialControl()
             }
-        } else {
+        case .optionsOpen:
+            cancelOptions()
+        case .collapsed:
             activateRadialControl()
         }
     }
@@ -245,18 +302,18 @@ final class OverlayViewModel: ObservableObject {
             commandHandler?(.selectTool(tool))
         case let .action(action):
             if isPassThroughMode { exitPassThroughMode() }
-            activateRadialControl()
-            selectedToolForOptions = nil
-            isOptionsOpen = false
+            radialState = .expanded(selectedToolForOptions: nil)
             commandHandler?(action)
         }
     }
 
     func activateToolSelection(_ tool: ToolKind) {
         if isPassThroughMode { exitPassThroughMode() }
-        activateRadialControl()
-        if tool != selectedToolForOptions { isOptionsOpen = false }
-        selectedToolForOptions = tool
+        // Preserve open options panel only if the same tool is being re-selected.
+        if case let .optionsOpen(current) = radialState, current == tool {
+            return
+        }
+        radialState = .expanded(selectedToolForOptions: tool)
     }
 
     func tooltip(for item: RadialItem) -> String {
@@ -284,42 +341,22 @@ final class OverlayViewModel: ObservableObject {
 
     func enterPassThroughMode() {
         guard !isPassThroughMode else { return }
-        isPassThroughMode = true
-        selectedToolForOptions = nil
-        isOptionsOpen = false
+        radialState = .passThrough
         onPassThroughModeChanged?(true)
     }
 
     func exitPassThroughMode() {
         guard isPassThroughMode else { return }
-        isPassThroughMode = false
+        radialState = .collapsed
         onPassThroughModeChanged?(false)
     }
 
     func cancelTextDraft() {
-        textDraft = nil
-        textDraftConfig = nil
-        textDraftExtendedOptions = nil
-        onTextEditingActive?(false)
+        textEditing.cancelTextDraft()
     }
 
     private func queueTextEditing(at point: CGPoint) {
-        let needsDeferredRestart = textDraft != nil
-        if needsDeferredRestart {
-            commitTextDraft()
-            DispatchQueue.main.async { [weak self] in
-                self?.beginTextEditing(at: point)
-            }
-            return
-        }
-        beginTextEditing(at: point)
-    }
-
-    private func beginTextEditing(at point: CGPoint) {
-        textDraftConfig = toolState.configs[toolState.activeTool]
-        textDraftExtendedOptions = toolState.extendedOptions[toolState.activeTool]
-        textDraft = TextDraft(text: "", origin: point)
-        onTextEditingActive?(true)
+        textEditing.queueTextEditing(at: point)
     }
 
     private func handleStrokeDragChanged(startLocation: CGPoint, location: CGPoint, isShiftConstrained: Bool) {

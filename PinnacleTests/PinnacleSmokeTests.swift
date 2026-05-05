@@ -459,7 +459,7 @@ final class PinnacleSmokeTests: XCTestCase {
 
     func testCenterTapInPassThroughExitsWithoutSelectingTool() {
         let viewModel = OverlayViewModel()
-        viewModel.isRadialExpanded = true
+        viewModel.activateRadialControl()
         viewModel.toolState.activeTool = .rectangle
         viewModel.enterPassThroughMode()
 
@@ -497,9 +497,8 @@ final class PinnacleSmokeTests: XCTestCase {
 
     func testActivateToolSelectionExitsPassThroughAndMirrorsToolClick() {
         let viewModel = OverlayViewModel()
-        viewModel.isRadialExpanded = false
-        viewModel.selectedToolForOptions = .pen
-        viewModel.isOptionsOpen = true
+        viewModel.activateToolSelection(.pen)
+        viewModel.openOptions()
         viewModel.enterPassThroughMode()
 
         viewModel.activateToolSelection(.eraser)
@@ -643,11 +642,13 @@ final class PinnacleSmokeTests: XCTestCase {
 @MainActor
 private func makeStoreHarness(
     shouldRecordingStartThrow: Bool = false,
-    shortcutService: SpyShortcutService = SpyShortcutService(),
-    preferencesService: UserDefaultsPreferencesService = UserDefaultsPreferencesService(
+    shortcutService: SpyShortcutService? = nil,
+    preferencesService: UserDefaultsPreferencesService? = nil
+) -> StoreHarness {
+    let shortcutService = shortcutService ?? SpyShortcutService()
+    let preferencesService = preferencesService ?? UserDefaultsPreferencesService(
         defaults: UserDefaults(suiteName: "PinnacleTests") ?? .standard
     )
-) -> StoreHarness {
     let overlayService = SpyOverlayService()
     let recordingService = SpyRecordingService(shouldThrowOnStart: shouldRecordingStartThrow)
     let permissionService = NoOpPermissionService()
@@ -688,6 +689,7 @@ private final class SpyOverlayService: OverlayService {
     private(set) var lastRadialVisibleValue = true
     private(set) var lastShortcutBindings: [ShortcutBinding] = []
     private var commandHandler: (@MainActor (OverlayAction) -> Void)?
+    private var errorHandler: (@MainActor (String) -> Void)?
 
     func startOverlay() {
         startCount += 1
@@ -729,8 +731,16 @@ private final class SpyOverlayService: OverlayService {
         commandHandler = handler
     }
 
+    func setErrorHandler(_ handler: @escaping @MainActor (String) -> Void) {
+        errorHandler = handler
+    }
+
     func trigger(_ action: OverlayAction) {
         commandHandler?(action)
+    }
+
+    func triggerError(_ message: String) {
+        errorHandler?(message)
     }
 }
 

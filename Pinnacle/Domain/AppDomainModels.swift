@@ -85,8 +85,26 @@ enum ToolKind: String, Codable, CaseIterable {
     case eraser
 }
 
+struct ColorHex: Equatable, Hashable, Codable, ExpressibleByStringLiteral, CustomStringConvertible {
+    let rawValue: String
+
+    init(_ rawValue: String) { self.rawValue = rawValue }
+    init(stringLiteral value: String) { self.rawValue = value }
+
+    init(from decoder: Decoder) throws {
+        self.rawValue = try decoder.singleValueContainer().decode(String.self)
+    }
+
+    func encode(to encoder: Encoder) throws {
+        var container = encoder.singleValueContainer()
+        try container.encode(rawValue)
+    }
+
+    var description: String { rawValue }
+}
+
 struct ToolConfig: Equatable, Codable {
-    var colorHexRGBA: String
+    var colorHexRGBA: ColorHex
     var strokeWidth: Double
     var opacity: Double
 }

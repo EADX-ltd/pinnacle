@@ -35,6 +35,7 @@ struct OverlayRootView: View {
                 if let textDraft = viewModel.textDraft, coordinateTransformer.displayFrame.contains(textDraft.origin) {
                     let fontSize = CGFloat(viewModel.textDraftActiveConfig.strokeWidth)
                     let nsColor = NSColor(Color(hexRGBA: viewModel.textDraftActiveConfig.colorHexRGBA).opacity(viewModel.textDraftActiveConfig.opacity))
+                    let localOrigin = coordinateTransformer.globalPointToLocal(textDraft.origin)
                     OverlayTextField(
                         text: Binding(
                             get: { viewModel.textDraft?.text ?? "" },
@@ -47,10 +48,7 @@ struct OverlayRootView: View {
                     )
                     .id(textDraft.id)
                     .frame(width: 300, height: fontSize * 1.5)
-                    .position(
-                        x: coordinateTransformer.globalPointToLocal(textDraft.origin).x + 150,
-                        y: coordinateTransformer.globalPointToLocal(textDraft.origin).y
-                    )
+                    .position(x: localOrigin.x + 150, y: localOrigin.y)
                 }
                 if viewModel.isRadialControlEnabled && !viewModel.isPassThroughMode {
                     RadialControlView(viewModel: viewModel, availableSize: proxy.size)
@@ -327,8 +325,8 @@ struct OverlayTextField: NSViewRepresentable {
 }
 
 extension Color {
-    init(hexRGBA: String) {
-        let value = hexRGBA.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
+    init(hexRGBA: ColorHex) {
+        let value = hexRGBA.rawValue.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
         var int: UInt64 = 0
         Scanner(string: value).scanHexInt64(&int)
         let r: UInt64

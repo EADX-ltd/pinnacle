@@ -16,6 +16,7 @@ final class AppKitOverlayService: OverlayService {
     private var keyEventMonitor: Any?
     private var dragStartGlobalPoint: CGPoint?
     private var cancellables: Set<AnyCancellable> = []
+    private var errorHandler: (@MainActor (String) -> Void)?
 
     init() {
         viewModel.strokeDurationRecorder = { [logger] durationMs in
@@ -73,11 +74,13 @@ final class AppKitOverlayService: OverlayService {
         }
         synchronizeOverlayPanels()
         guard !overlayPanelByDisplayID.isEmpty else {
-            logger.error("No screen available - overlay panels cannot be created")
+            let message = "No screen available – overlay panels cannot be created."
+            logger.error("\(message, privacy: .public)")
+            errorHandler?(message)
             return
         }
         viewModel.isOverlayVisible = true
-        viewModel.isPassThroughMode = false
+        viewModel.exitPassThroughMode()
         refreshOverlayInteractionState()
         orderActivePanelFront()
         NSApp.activate(ignoringOtherApps: true)
@@ -91,7 +94,6 @@ final class AppKitOverlayService: OverlayService {
 
     func stopOverlay() {
         viewModel.isOverlayVisible = false
-        viewModel.isPassThroughMode = false
         viewModel.collapseRadialControl()
         refreshOverlayInteractionState()
         removeMouseEventMonitor()
@@ -142,6 +144,10 @@ final class AppKitOverlayService: OverlayService {
 
     func setCommandHandler(_ handler: @escaping @MainActor (OverlayAction) -> Void) {
         viewModel.commandHandler = handler
+    }
+
+    func setErrorHandler(_ handler: @escaping @MainActor (String) -> Void) {
+        errorHandler = handler
     }
 
     // MARK: - Panel management
@@ -211,7 +217,9 @@ final class AppKitOverlayService: OverlayService {
             }
         } else {
             guard let panel = makeOverlayPanel(for: descriptor) else {
-                logger.error("Failed to create overlay panel for display id=\(targetID, privacy: .public)")
+                let message = "Failed to create overlay panel for display \(targetID)."
+                logger.error("\(message, privacy: .public)")
+                errorHandler?(message)
                 refreshOverlayInteractionState()
                 return
             }
@@ -251,7 +259,12 @@ final class AppKitOverlayService: OverlayService {
             }
             .store(in: &cancellables)
 
-        viewModel.$isPassThroughMode
+        viewModel.$radialState
+            .map { state -> Bool in
+                if case .passThrough = state { return true }
+                return false
+            }
+            .removeDuplicates()
             .sink { [weak self] _ in
                 self?.refreshOverlayInteractionState()
                 self?.refreshCursor()
@@ -451,7 +464,6 @@ final class AppKitOverlayService: OverlayService {
         } else if viewModel.textDraft != nil {
             viewModel.cancelTextDraft()
         } else {
-            viewModel.selectedToolForOptions = nil
             viewModel.enterPassThroughMode()
         }
     }

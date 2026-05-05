@@ -4,7 +4,7 @@ struct ToolOptionsPanelView: View {
     @ObservedObject var viewModel: OverlayViewModel
     let tool: ToolKind
 
-    private let palette = ["#FF3B30FF", "#0A84FFFF", "#34C759FF", "#FFD60AFF", "#AF52DEFF", "#FFFFFFFF", "#FF9500FF"]
+    private let palette: [ColorHex] = ["#FF3B30FF", "#0A84FFFF", "#34C759FF", "#FFD60AFF", "#AF52DEFF", "#FFFFFFFF", "#FF9500FF"]
 
     var body: some View {
         VStack(spacing: 10) {

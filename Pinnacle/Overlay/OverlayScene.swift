@@ -3,11 +3,11 @@ import Foundation
 
 struct OverlaySceneElement: Identifiable, Equatable {
     enum Kind: Equatable {
-        case stroke(points: [CGPoint], width: CGFloat, colorHexRGBA: String, opacity: Double, lineStyle: LineStyle)
-        case arrow(start: CGPoint, end: CGPoint, width: CGFloat, colorHexRGBA: String, opacity: Double, lineStyle: LineStyle, arrowStyle: ArrowStyle)
-        case rectangle(rect: CGRect, width: CGFloat, colorHexRGBA: String, opacity: Double, lineStyle: LineStyle)
-        case ellipse(rect: CGRect, width: CGFloat, colorHexRGBA: String, opacity: Double, lineStyle: LineStyle)
-        case text(text: String, origin: CGPoint, fontSize: CGFloat, colorHexRGBA: String, opacity: Double, fontDesign: TextFontDesign)
+        case stroke(points: [CGPoint], width: CGFloat, colorHexRGBA: ColorHex, opacity: Double, lineStyle: LineStyle)
+        case arrow(start: CGPoint, end: CGPoint, width: CGFloat, colorHexRGBA: ColorHex, opacity: Double, lineStyle: LineStyle, arrowStyle: ArrowStyle)
+        case rectangle(rect: CGRect, width: CGFloat, colorHexRGBA: ColorHex, opacity: Double, lineStyle: LineStyle)
+        case ellipse(rect: CGRect, width: CGFloat, colorHexRGBA: ColorHex, opacity: Double, lineStyle: LineStyle)
+        case text(text: String, origin: CGPoint, fontSize: CGFloat, colorHexRGBA: ColorHex, opacity: Double, fontDesign: TextFontDesign)
     }
 
     let id: UUID
@@ -18,7 +18,7 @@ struct OverlaySceneElement: Identifiable, Equatable {
         self.kind = kind
     }
 
-    var colorHexRGBA: String {
+    var colorHexRGBA: ColorHex {
         switch kind {
         case let .stroke(_, _, colorHexRGBA, _, _): return colorHexRGBA
         case let .arrow(_, _, _, colorHexRGBA, _, _, _): return colorHexRGBA
@@ -54,7 +54,7 @@ struct OverlayTextItem: Identifiable, Equatable {
     let text: String
     let origin: CGPoint
     let fontSize: CGFloat
-    let colorHexRGBA: String
+    let colorHexRGBA: ColorHex
     let opacity: Double
     let fontDesign: TextFontDesign
 }
