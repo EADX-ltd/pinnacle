@@ -327,6 +327,21 @@ final class PinnacleSmokeTests: XCTestCase {
         XCTAssertEqual(harness.store.currentShortcutBindings, custom)
     }
 
+    func testPreferencesSchemaVersionStampedOnFirstInit() throws {
+        let preferencesService = UserDefaultsPreferencesService(
+            defaults: UserDefaults(suiteName: suiteName) ?? .standard
+        )
+        // No version stored ⇒ defaultValue 0.
+        XCTAssertEqual(preferencesService.value(for: AppStore.preferencesSchemaVersionKey), 0)
+
+        _ = makeStoreHarness(preferencesService: preferencesService)
+
+        XCTAssertEqual(
+            preferencesService.value(for: AppStore.preferencesSchemaVersionKey),
+            AppStore.currentPreferencesSchemaVersion
+        )
+    }
+
     func testSetOutputDirectoryAppliesToServiceAndPersists() throws {
         let preferencesService = UserDefaultsPreferencesService(
             defaults: UserDefaults(suiteName: suiteName) ?? .standard

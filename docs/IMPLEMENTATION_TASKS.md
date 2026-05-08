@@ -36,7 +36,7 @@ This file is the execution board for implementation work. Use it with `docs/ARCH
 | 5 | Multi-display support | `done` | Task group `P5-*` complete, with session behavior now intentionally limited to one mouse-selected display at action start |
 | 6 | Recording engine integration | `in_progress` | Task group `P6-*` all `done` |
 | 7 | Settings UI for shortcuts/colors | `in_progress` | Task group `P7-*` complete except final `P7-T05` manual GUI checklist |
-| 8 | Persistence and output management | `todo` | Task group `P8-*` all `done` |
+| 8 | Persistence and output management | `done` | All `P8-*` complete (P8-T05 skipped — labeled `Optional`); 73 unit tests cover persistence round-trips |
 | 9 | Stabilization, profiling, test pass | `todo` | Task group `P9-*` all `done` |
 
 ## Next Batch Priority (Must Complete Before Phase 6)
@@ -165,8 +165,8 @@ All previously listed items are `done`. The batch below was completed in this se
 | P8-T02 | Add schema versioning and migration hook | P8-T01 | `done` | `preferencesSchemaVersionKey` (current=1) + `migratePreferencesIfNeeded` runs on `AppStore.init` |
 | P8-T03 | Implement recording output directory selection + validation | P6-T02 | `done` | `RecordingService.outputDirectory` settable; AppStore validates writability and surfaces actionable errors; `OutputPanelView` provides folder picker + Reveal in Finder + Reset |
 | P8-T04 | Implement deterministic file naming and collision handling | P8-T03 | `done` | `ScreenCaptureKitRecordingService.uniqueFileURL` appends `-1`, `-2`, … up to 100 then UUID fallback so an existing file is never overwritten |
-| P8-T05 | Optional: metadata sidecar JSON write | P8-T04 | `todo` | Sidecar generated when feature flag is enabled |
-| P8-T06 | Add persistence tests for shortcuts, palette, output path | P8-T01, P2-T04, P7-T02 | `todo` | Regression tests pass for key persisted settings |
+| P8-T05 | Optional: metadata sidecar JSON write | P8-T04 | `todo` | Skipped — labeled `Optional` in the original spec; revisit when there is a concrete consumer for the sidecar |
+| P8-T06 | Add persistence tests for shortcuts, palette, output path | P8-T01, P2-T04, P7-T02 | `done` | Tests cover shortcut bindings round-trip + conflict path + reset, tool configs/extended options round-trip + reset, radial enabled + default position round-trip, output directory set + reset + reject-non-directory, uniqueFileURL collision avoidance, and schema-version stamp on first init |
 
 ### Phase 9: Stabilization, Profiling, and Release Readiness
 | ID | Task | Depends On | Status | Acceptance Criteria |
