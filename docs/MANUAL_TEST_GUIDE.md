@@ -208,3 +208,99 @@ P3-T09 / 2026-MM-DD
 If all scenarios pass, mark the task `done` in `docs/IMPLEMENTATION_TASKS.md` and append an entry to section 13 of `docs/ARCHITECTURE.md`.
 
 If any scenario fails, set status to `blocked` and add an entry under **Blockers Log** in `docs/IMPLEMENTATION_TASKS.md`.
+
+---
+
+## P7-T05 — Settings Flows Checklist
+
+Acceptance: every Settings flow works end-to-end (happy path + at least one error path), and changes survive an app relaunch.
+
+Open Settings via `⌘,` from the menu bar or the Pinnacle status item. The window has four tabs: **Shortcuts**, **Tools**, **Radial**, **Permissions**.
+
+### 1. Shortcuts tab — happy path
+
+1. Open Settings → **Shortcuts**.
+2. **Expected:** all 17 commands listed in stable order, each row shows current modifier toggles + key picker.
+3. Click **⇧** on the *Toggle Annotation* row.
+4. **Expected:** binding updates immediately, no warning banner appears.
+5. Open the menu bar → start annotation → confirm the new shortcut now works (and the old one no longer does).
+6. Quit and relaunch Pinnacle.
+7. **Expected:** the new binding persists.
+
+### 2. Shortcuts tab — conflict path
+
+1. With Settings open, change the *Toggle Recording* row to the same key+modifiers as *Toggle Annotation*.
+2. **Expected:** orange banner appears at top: "Two or more shortcuts share the same key combination…". Both conflicting rows highlighted in orange. The change is **not** persisted yet (verify by closing Settings and reopening — only the original change should be there).
+3. Edit one of the conflicting rows back to a unique combo.
+4. **Expected:** banner disappears, the change is now persisted.
+
+### 3. Shortcuts tab — reset
+
+1. Click **Reset to Defaults**.
+2. **Expected:** confirmation alert. Click *Reset*.
+3. All rows revert to the architecture defaults (`docs/ARCHITECTURE.md` §5.3).
+4. Relaunch Pinnacle. Defaults persist.
+
+### 4. Tools tab — color editing
+
+1. Open Settings → **Tools**.
+2. Picker shows all configurable tools (eraser excluded).
+3. Select **Pen**, click a swatch (e.g., red).
+4. **Expected:** Pen color updates immediately. Open the radial overlay → pen color matches.
+5. Click the colored disc on the right of the swatches → native macOS color picker opens.
+6. Choose any custom color.
+7. **Expected:** color updates, pen draws with that color.
+8. Quit and relaunch. Custom color persists.
+
+### 5. Tools tab — sliders + extended options
+
+1. With **Pen** selected, drag *Thickness* to ~12.
+2. **Expected:** value display updates ("12"); next pen stroke draws thicker.
+3. Drag *Opacity* to ~50%.
+4. **Expected:** display reads "50%"; next stroke is semi-transparent.
+5. Switch to **Arrow** tool. *Line Style* segmented control appears (Solid / Dotted / Dashed).
+6. Choose *Dashed*; next arrow drawn is dashed.
+7. *Arrow Style* should also appear (Single / Double). Toggle to *Double*; next arrow has heads on both ends.
+8. Switch to **Text**. *Font Size* slider replaces *Thickness*; *Font* picker appears (Sans / Serif / Mono).
+9. Each renders correctly.
+
+### 6. Tools tab — reset
+
+1. Click **Reset to Defaults**, confirm.
+2. All tool styles revert; pen color = `#FFD60AFF` (yellow), thickness = 1, opacity = 1.
+
+### 7. Radial tab
+
+1. Toggle **Show radial control on overlay** off.
+2. Start annotation. Radial does not appear; shortcut-driven actions still work.
+3. Toggle back on. Radial appears.
+4. Switch *Default position* to **Left**.
+5. Quit and relaunch (so the "first time radial is shown" path runs again). Note: an existing session has `hasInitializedRadialPosition = true`; positions only reapply on a fresh init.
+6. Start annotation; radial should appear on the **left** of the screen.
+7. Drag the radial elsewhere; close & reopen overlay (toggle annotation off → on). The radial should still be at the dragged position (the *default* only applies on first init).
+
+### 8. Permissions tab — first launch
+
+1. Remove Pinnacle's Screen Recording entitlement in *System Settings → Privacy & Security → Screen Recording*. Quit & relaunch.
+2. Open Settings → **Permissions**.
+3. **Expected:** status shows orange icon and *"Not yet requested — click Request Access to prompt."*
+4. Click **Request Access**.
+5. **Expected:** TCC prompt appears. Click *Don't Allow*.
+6. Click **Re-check**.
+7. **Expected:** status now shows red icon and *"Denied — open System Settings to grant access."* (the audit's `hasRequested` flag should make this distinguishable).
+8. Click **Open System Settings**.
+9. **Expected:** macOS jumps to *Privacy & Security → Screen Recording*.
+
+### 9. Permissions tab — granted state
+
+1. In System Settings, toggle Pinnacle on. Restart Pinnacle if prompted.
+2. Open Settings → **Permissions**, click **Re-check**.
+3. **Expected:** green checkmark, *"Granted — recording is enabled."* The **Request Access** button is disabled.
+
+### Exit criteria
+
+- Sections 1–9 above all pass.
+- No console errors on Settings open / close / tab switch (use `Console.app` filtered by `Pinnacle`).
+- All persisted preferences survive an app relaunch.
+
+If any section fails, file a row under **Blockers Log** in `docs/IMPLEMENTATION_TASKS.md` with the failing section and observed behavior.

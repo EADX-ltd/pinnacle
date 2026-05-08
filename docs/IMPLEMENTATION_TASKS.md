@@ -35,7 +35,7 @@ This file is the execution board for implementation work. Use it with `docs/ARCH
 | 4 | Tool renderers + undo/redo | `done` | Task group `P4-*` all `done` including per-tool options and modifier rules |
 | 5 | Multi-display support | `done` | Task group `P5-*` complete, with session behavior now intentionally limited to one mouse-selected display at action start |
 | 6 | Recording engine integration | `in_progress` | Task group `P6-*` all `done` |
-| 7 | Settings UI for shortcuts/colors | `todo` | Task group `P7-*` all `done` |
+| 7 | Settings UI for shortcuts/colors | `in_progress` | Task group `P7-*` complete except final `P7-T05` manual GUI checklist |
 | 8 | Persistence and output management | `todo` | Task group `P8-*` all `done` |
 | 9 | Stabilization, profiling, test pass | `todo` | Task group `P9-*` all `done` |
 
@@ -154,7 +154,7 @@ All previously listed items are `done`. The batch below was completed in this se
 | P7-T02 | Build tool color and stroke configuration UI | P4-T02 | `done` | All tool style settings can be modified interactively |
 | P7-T03 | Build permissions panel with status and re-check actions | P6-T01 | `done` | Permission states are visible and refreshable |
 | P7-T04 | Add settings reset-to-default behavior | P7-T01, P7-T02 | `done` | Reset restores architecture defaults safely |
-| P7-T05 | Add UI tests/manual checklist for settings flows | P7-T01, P7-T02, P7-T03 | `todo` | Settings flows verified for happy/error paths |
+| P7-T05 | Add UI tests/manual checklist for settings flows | P7-T01, P7-T02, P7-T03 | `in_progress` | Manual checklist authored in `docs/MANUAL_TEST_GUIDE.md` (sections 1–9: Shortcuts happy/conflict/reset, Tools color/sliders/reset, Radial, Permissions denied/granted); 17+ unit tests cover the underlying APIs. Awaiting GUI session execution. |
 | P7-T06 | Add radial control preferences (enabled, default position) | P3-T06, P3-T13, P3-T14 | `done` | Users can configure radial behavior from Settings (auto-hide skipped — removed by P3-T18; collapsed size deferred as premature) |
 | P7-T07 | Add validation/tests for radial preferences persistence | P7-T06, P8-T01 | `done` | Radial settings survive restart; tests cover load-on-init + persist-on-change + propagation |
 
