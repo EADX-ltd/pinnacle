@@ -435,23 +435,26 @@ final class AppStore: ObservableObject {
         return ScreenCaptureKitRecordingService.defaultOutputDirectory()
     }
 
-    enum OutputDirectoryError: LocalizedError {
+    enum OutputDirectoryError: LocalizedError, Equatable {
         case notADirectory
-        case notWritable
+        case notWritable(String)
 
         var errorDescription: String? {
             switch self {
             case .notADirectory:
                 return "Selected path is not a directory."
-            case .notWritable:
-                return "Selected directory cannot be written to."
+            case .notWritable(let detail):
+                return "Selected directory cannot be written to: \(detail)"
             }
         }
     }
 
     /// Validate the chosen directory and apply it to both the live recording
-    /// service and persisted preferences. Throws if the path doesn't exist or
-    /// isn't writable so the caller can surface the failure in the UI.
+    /// service and persisted preferences. Throws if the path doesn't exist
+    /// or fails a probe write so the caller can surface the failure in the
+    /// UI. The probe is a tiny temporary file (created and immediately
+    /// deleted) — `FileManager.isWritableFile` is best-effort and reports
+    /// true for some unwritable network/ACL paths.
     func setOutputDirectory(_ url: URL) throws {
         var isDir: ObjCBool = false
         let exists = FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir)
@@ -461,8 +464,12 @@ final class AppStore: ObservableObject {
         if !exists {
             try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
         }
-        guard FileManager.default.isWritableFile(atPath: url.path) else {
-            throw OutputDirectoryError.notWritable
+        let probe = url.appendingPathComponent(".pinnacle_writability_probe", isDirectory: false)
+        do {
+            try Data().write(to: probe, options: .atomic)
+            try FileManager.default.removeItem(at: probe)
+        } catch {
+            throw OutputDirectoryError.notWritable(error.localizedDescription)
         }
         container.recordingService.outputDirectory = url
         container.preferencesService.setValue(url.path, for: Self.outputDirectoryPathPreferenceKey)

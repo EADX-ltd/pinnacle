@@ -63,13 +63,23 @@ struct OutputPanelView: View {
         panel.prompt = "Choose"
         panel.directoryURL = store.outputDirectory
 
-        if panel.runModal() == .OK, let url = panel.url {
+        let completion: (NSApplication.ModalResponse) -> Void = { response in
+            guard response == .OK, let url = panel.url else { return }
             do {
                 try store.setOutputDirectory(url)
                 errorMessage = nil
             } catch {
                 errorMessage = error.localizedDescription
             }
+        }
+
+        // Sheet onto the Settings window so the main run loop isn't blocked.
+        // Falls back to a free-standing modal if no key window is available
+        // (shouldn't happen from a Settings tab, but handles edge cases).
+        if let window = NSApp.keyWindow ?? NSApp.windows.first(where: { $0.isVisible }) {
+            panel.beginSheetModal(for: window, completionHandler: completion)
+        } else {
+            panel.begin(completionHandler: completion)
         }
     }
 }
