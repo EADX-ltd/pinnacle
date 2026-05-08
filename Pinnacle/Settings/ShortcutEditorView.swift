@@ -3,6 +3,7 @@ import SwiftUI
 struct ShortcutEditorView: View {
     @ObservedObject var store: AppStore
     @State private var draft: [ShortcutBinding] = []
+    @State private var showResetConfirmation = false
 
     private var conflictingSignatures: Set<String> {
         var seen: [String: Int] = [:]
@@ -50,8 +51,24 @@ struct ShortcutEditorView: View {
                 RoundedRectangle(cornerRadius: 6)
                     .stroke(Color(nsColor: .separatorColor), lineWidth: 1)
             )
+
+            HStack {
+                Spacer()
+                Button("Reset to Defaults") {
+                    showResetConfirmation = true
+                }
+            }
         }
         .padding(16)
+        .alert("Reset shortcuts to defaults?", isPresented: $showResetConfirmation) {
+            Button("Reset", role: .destructive) {
+                store.resetShortcutsToDefaults()
+                loadFromStore()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This replaces all custom bindings with the built-in defaults. The change is immediate and persisted.")
+        }
         .onAppear { loadFromStore() }
         .onChange(of: draft) { _, newDraft in
             // Live save when conflict-free; otherwise leave the draft local so

@@ -4,6 +4,7 @@ import SwiftUI
 struct ToolStyleEditorView: View {
     @ObservedObject var store: AppStore
     @State private var selectedTool: ToolKind = .pen
+    @State private var showResetConfirmation = false
 
     private static let palette: [ColorHex] = [
         "#FF3B30FF", "#0A84FFFF", "#34C759FF", "#FFD60AFF",
@@ -49,8 +50,23 @@ struct ToolStyleEditorView: View {
                 }
             }
             .formStyle(.grouped)
+
+            HStack {
+                Spacer()
+                Button("Reset to Defaults") {
+                    showResetConfirmation = true
+                }
+            }
         }
         .padding(16)
+        .alert("Reset tool styles to defaults?", isPresented: $showResetConfirmation) {
+            Button("Reset", role: .destructive) {
+                store.resetToolStylesToDefaults()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("This replaces all per-tool color, thickness, opacity, and extended-option choices with the built-in defaults.")
+        }
     }
 
     // MARK: - Color

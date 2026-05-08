@@ -327,6 +327,49 @@ final class PinnacleSmokeTests: XCTestCase {
         XCTAssertEqual(harness.store.currentShortcutBindings, custom)
     }
 
+    func testResetShortcutsToDefaultsRestoresAndPersists() throws {
+        let preferencesService = UserDefaultsPreferencesService(
+            defaults: UserDefaults(suiteName: suiteName) ?? .standard
+        )
+        // Seed with a customized binding.
+        var custom = ShortcutBinding.defaults
+        if let idx = custom.firstIndex(where: { $0.commandID == .selectPen }) {
+            custom[idx] = ShortcutBinding(commandID: .selectPen, key: .one, modifiers: [.control, .option, .shift])
+        }
+        preferencesService.setValue(custom, for: AppStore.shortcutBindingsPreferenceKey)
+        let shortcutService = SpyShortcutService()
+        let harness = makeStoreHarness(
+            shortcutService: shortcutService,
+            preferencesService: preferencesService
+        )
+        XCTAssertEqual(shortcutService.lastRegisteredBindings, custom)
+
+        harness.store.resetShortcutsToDefaults()
+
+        XCTAssertEqual(shortcutService.lastRegisteredBindings, ShortcutBinding.defaults)
+        XCTAssertEqual(
+            preferencesService.value(for: AppStore.shortcutBindingsPreferenceKey),
+            ShortcutBinding.defaults
+        )
+    }
+
+    func testResetToolStylesToDefaultsRestoresAndPersists() throws {
+        let preferencesService = UserDefaultsPreferencesService(
+            defaults: UserDefaults(suiteName: suiteName) ?? .standard
+        )
+        let harness = makeStoreHarness(preferencesService: preferencesService)
+        // Mutate then reset.
+        let custom = ToolConfig(colorHexRGBA: "#FFFFFFFF", strokeWidth: 30, opacity: 0.3)
+        harness.store.updateToolConfig(custom, for: .arrow)
+        XCTAssertNotEqual(harness.store.currentToolConfig(for: .arrow), ToolState.default.configs[.arrow])
+
+        harness.store.resetToolStylesToDefaults()
+
+        XCTAssertEqual(harness.store.currentToolConfig(for: .arrow), ToolState.default.configs[.arrow])
+        let storedConfigs = preferencesService.value(for: AppStore.toolConfigsPreferenceKey)
+        XCTAssertEqual(storedConfigs, ToolState.default.configs)
+    }
+
     func testPermissionStatusReturnsServiceValue() async throws {
         let spyPermissions = SpyPermissionService(initialStatus: .granted)
         let harness = makeStoreHarness(permissionService: spyPermissions)

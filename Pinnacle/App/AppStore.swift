@@ -286,6 +286,21 @@ final class AppStore: ObservableObject {
         }
     }
 
+    /// Restore shortcut bindings to architecture defaults, persist, and
+    /// re-register with the shortcut service.
+    func resetShortcutsToDefaults() {
+        _ = updateShortcutBindings(ShortcutBinding.defaults)
+    }
+
+    /// Restore all per-tool styles (configs + extended options) to the
+    /// architecture defaults, push to the overlay, and persist.
+    func resetToolStylesToDefaults() {
+        toolState.configs = ToolState.default.configs
+        toolState.extendedOptions = ToolState.default.extendedOptions
+        container.overlayService.update(toolState: toolState)
+        persistToolStyle()
+    }
+
     /// Current screen-recording permission status, computed via the live
     /// PermissionService. Async because the underlying TCC API is async-shaped.
     func permissionStatus() async -> PermissionStatus {
