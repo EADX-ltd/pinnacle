@@ -25,6 +25,14 @@ final class AppStore: ObservableObject {
         name: "preferences.shortcuts.bindings",
         defaultValue: ShortcutBinding.defaults
     )
+    static let toolConfigsPreferenceKey = PreferenceKey<[ToolKind: ToolConfig]>(
+        name: "preferences.toolStyles.configs",
+        defaultValue: ToolState.default.configs
+    )
+    static let toolExtendedOptionsPreferenceKey = PreferenceKey<[ToolKind: ToolExtendedOptions]>(
+        name: "preferences.toolStyles.extendedOptions",
+        defaultValue: ToolState.default.extendedOptions
+    )
 
     @Published private(set) var sessionMode: SessionMode = .idle
     @Published private(set) var toolState: ToolState = .default
@@ -41,9 +49,24 @@ final class AppStore: ObservableObject {
 
     init(container: AppContainer) {
         self.container = container
+        // Load persisted tool styles before pushing to overlay so a fresh
+        // session starts with the user's saved colors/widths instead of
+        // defaults flashing through.
+        toolState = Self.toolStateLoaded(from: container.preferencesService)
         configureOverlay()
         configureShortcuts()
         configureRecording()
+    }
+
+    private static func toolStateLoaded(from preferences: PreferencesService) -> ToolState {
+        let savedConfigs = preferences.value(for: toolConfigsPreferenceKey)
+        let savedExtOpts = preferences.value(for: toolExtendedOptionsPreferenceKey)
+        var state = ToolState.default
+        for tool in ToolKind.allCases {
+            if let cfg = savedConfigs[tool] { state.configs[tool] = cfg }
+            if let opts = savedExtOpts[tool] { state.extendedOptions[tool] = opts }
+        }
+        return state
     }
 
     func invalidate() {
@@ -180,16 +203,19 @@ final class AppStore: ObservableObject {
             config.colorHexRGBA = palette[(idx + 1) % palette.count]
             toolState.configs[toolState.activeTool] = config
             container.overlayService.update(toolState: toolState)
+            persistToolStyle()
         case .increaseStroke:
             guard var config = toolState.configs[toolState.activeTool] else { break }
             config.strokeWidth = min(48, config.strokeWidth + 2)
             toolState.configs[toolState.activeTool] = config
             container.overlayService.update(toolState: toolState)
+            persistToolStyle()
         case .decreaseStroke:
             guard var config = toolState.configs[toolState.activeTool] else { break }
             config.strokeWidth = max(1, config.strokeWidth - 2)
             toolState.configs[toolState.activeTool] = config
             container.overlayService.update(toolState: toolState)
+            persistToolStyle()
         case .toggleRadialControl:
             isRadialControlVisible.toggle()
             container.overlayService.setRadialControlVisible(isRadialControlVisible)
@@ -258,6 +284,43 @@ final class AppStore: ObservableObject {
             lastErrorMessage = "Failed to register shortcuts: \(error.localizedDescription)"
             return false
         }
+    }
+
+    func currentToolConfig(for tool: ToolKind) -> ToolConfig {
+        toolState.configs[tool]
+            ?? ToolState.default.configs[tool]
+            ?? ToolConfig(colorHexRGBA: "#FFD60AFF", strokeWidth: 1, opacity: 1)
+    }
+
+    func currentToolExtendedOptions(for tool: ToolKind) -> ToolExtendedOptions {
+        toolState.extendedOptions[tool] ?? .default
+    }
+
+    /// Update one tool's color/stroke/opacity. Pushes to the overlay service
+    /// (so an open radial picks it up) and persists.
+    func updateToolConfig(_ config: ToolConfig, for tool: ToolKind) {
+        toolState.configs[tool] = config
+        container.overlayService.update(toolState: toolState)
+        persistToolStyle()
+    }
+
+    /// Update one tool's extended options (line/arrow/font). Pushes to the
+    /// overlay service and persists.
+    func updateToolExtendedOptions(_ options: ToolExtendedOptions, for tool: ToolKind) {
+        toolState.extendedOptions[tool] = options
+        container.overlayService.update(toolState: toolState)
+        persistToolStyle()
+    }
+
+    private func persistToolStyle() {
+        container.preferencesService.setValue(
+            toolState.configs,
+            for: Self.toolConfigsPreferenceKey
+        )
+        container.preferencesService.setValue(
+            toolState.extendedOptions,
+            for: Self.toolExtendedOptionsPreferenceKey
+        )
     }
 
     private func makeShortcutHandler() -> @MainActor (ShortcutCommandID) -> Void {
@@ -339,6 +402,7 @@ final class AppStore: ObservableObject {
                 toolState.configs[tool] = config
                 toolState.extendedOptions[tool] = extendedOptions
                 container.overlayService.update(toolState: toolState)
+                persistToolStyle()
             }
         }
     }

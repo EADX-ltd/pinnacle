@@ -246,6 +246,72 @@ final class PinnacleSmokeTests: XCTestCase {
         )
     }
 
+    func testUpdateToolConfigPersistsAndPushesToOverlay() throws {
+        let preferencesService = UserDefaultsPreferencesService(
+            defaults: UserDefaults(suiteName: suiteName) ?? .standard
+        )
+        let harness = makeStoreHarness(preferencesService: preferencesService)
+        let newConfig = ToolConfig(colorHexRGBA: "#34C759FF", strokeWidth: 7, opacity: 0.5)
+
+        harness.store.updateToolConfig(newConfig, for: .pen)
+
+        XCTAssertEqual(harness.store.currentToolConfig(for: .pen), newConfig)
+        XCTAssertEqual(harness.overlayService.updatedToolState?.configs[.pen], newConfig)
+        let storedConfigs = preferencesService.value(for: AppStore.toolConfigsPreferenceKey)
+        XCTAssertEqual(storedConfigs[.pen], newConfig)
+    }
+
+    func testUpdateToolExtendedOptionsPersistsAndPushesToOverlay() throws {
+        let preferencesService = UserDefaultsPreferencesService(
+            defaults: UserDefaults(suiteName: suiteName) ?? .standard
+        )
+        let harness = makeStoreHarness(preferencesService: preferencesService)
+        let newOptions = ToolExtendedOptions(lineStyle: .dashed, arrowStyle: .double, textFontDesign: .monospaced)
+
+        harness.store.updateToolExtendedOptions(newOptions, for: .arrow)
+
+        XCTAssertEqual(harness.store.currentToolExtendedOptions(for: .arrow), newOptions)
+        XCTAssertEqual(harness.overlayService.updatedToolState?.extendedOptions[.arrow], newOptions)
+        let stored = preferencesService.value(for: AppStore.toolExtendedOptionsPreferenceKey)
+        XCTAssertEqual(stored[.arrow], newOptions)
+    }
+
+    func testStoredToolStylesAreLoadedOnStoreInit() throws {
+        let preferencesService = UserDefaultsPreferencesService(
+            defaults: UserDefaults(suiteName: suiteName) ?? .standard
+        )
+        var seedConfigs = ToolState.default.configs
+        seedConfigs[.highlighter] = ToolConfig(colorHexRGBA: "#FF9500FF", strokeWidth: 22, opacity: 0.7)
+        var seedExtOpts = ToolState.default.extendedOptions
+        seedExtOpts[.text] = ToolExtendedOptions(lineStyle: .solid, arrowStyle: .single, textFontDesign: .serif)
+        preferencesService.setValue(seedConfigs, for: AppStore.toolConfigsPreferenceKey)
+        preferencesService.setValue(seedExtOpts, for: AppStore.toolExtendedOptionsPreferenceKey)
+
+        let harness = makeStoreHarness(preferencesService: preferencesService)
+
+        XCTAssertEqual(harness.store.currentToolConfig(for: .highlighter), seedConfigs[.highlighter])
+        XCTAssertEqual(harness.store.currentToolExtendedOptions(for: .text), seedExtOpts[.text])
+        // Other tools fall back to defaults — the merge filled gaps without
+        // dropping the user's overrides.
+        XCTAssertEqual(harness.store.currentToolConfig(for: .pen), ToolState.default.configs[.pen])
+    }
+
+    func testApplyToolOptionsFromOverlayPersistsToStorage() throws {
+        let preferencesService = UserDefaultsPreferencesService(
+            defaults: UserDefaults(suiteName: suiteName) ?? .standard
+        )
+        let harness = makeStoreHarness(preferencesService: preferencesService)
+        let newConfig = ToolConfig(colorHexRGBA: "#0A84FFFF", strokeWidth: 12, opacity: 0.9)
+        let newOptions = ToolExtendedOptions(lineStyle: .dotted, arrowStyle: .single, textFontDesign: .system)
+
+        harness.overlayService.trigger(.applyToolOptions(.rectangle, newConfig, newOptions))
+
+        let storedConfigs = preferencesService.value(for: AppStore.toolConfigsPreferenceKey)
+        let storedExt = preferencesService.value(for: AppStore.toolExtendedOptionsPreferenceKey)
+        XCTAssertEqual(storedConfigs[.rectangle], newConfig)
+        XCTAssertEqual(storedExt[.rectangle], newOptions)
+    }
+
     func testCurrentShortcutBindingsExposesStoredValue() throws {
         let preferencesService = UserDefaultsPreferencesService(
             defaults: UserDefaults(suiteName: suiteName) ?? .standard

@@ -9,6 +9,10 @@ struct SettingsView: View {
                 .tabItem {
                     Label("Shortcuts", systemImage: "keyboard")
                 }
+            ToolStyleEditorView(store: store)
+                .tabItem {
+                    Label("Tools", systemImage: "paintbrush.pointed")
+                }
         }
         .frame(minWidth: 560, minHeight: 420)
     }
