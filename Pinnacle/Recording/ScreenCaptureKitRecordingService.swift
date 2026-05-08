@@ -15,7 +15,7 @@ enum RecordingError: LocalizedError {
         case .noDisplay:
             return "No display available for recording."
         case .permissionRequired:
-            return "Screen recording permission is required. Grant access in System Settings → Privacy & Security → Screen Recording, then restart the app."
+            return "Screen recording permission is required. Open System Settings → Privacy & Security → Screen Recording and make sure Pinnacle is checked. If it already is and you still see this, remove Pinnacle from that list and grant access again — rebuilds can invalidate the TCC entry."
         }
     }
 }
@@ -52,10 +52,14 @@ final class ScreenCaptureKitRecordingService: NSObject, RecordingService {
     func startRecording() throws {
         guard !isRecording else { return }
 
-        guard CGPreflightScreenCaptureAccess() else {
-            CGRequestScreenCaptureAccess()
-            throw RecordingError.permissionRequired
-        }
+        // Note: we don't gate on `CGPreflightScreenCaptureAccess()` here. It
+        // can return false even when the user has actually granted access —
+        // every ad-hoc-signed dev build has a different cdhash, so TCC's
+        // cached entry from a previous build doesn't apply, even though the
+        // app's name is still listed in System Settings. Instead we let
+        // `SCShareableContent` (in `beginCapture`) be ground truth: if the
+        // process truly has access, it succeeds; if it doesn't, it throws
+        // and we surface `RecordingError.permissionRequired` from there.
 
         guard let display = DisplayDescriptor.underMouse() else {
             throw RecordingError.noDisplay
@@ -177,10 +181,23 @@ final class ScreenCaptureKitRecordingService: NSObject, RecordingService {
     ) async {
         do {
             try Task.checkCancellation()
-            let content = try await SCShareableContent.excludingDesktopWindows(
-                false,
-                onScreenWindowsOnly: true
-            )
+            let content: SCShareableContent
+            do {
+                content = try await SCShareableContent.excludingDesktopWindows(
+                    false,
+                    onScreenWindowsOnly: true
+                )
+            } catch {
+                // SCShareableContent is the de-facto TCC probe. If it throws,
+                // the user almost certainly lacks Screen Recording access.
+                // Triggering CGRequestScreenCaptureAccess on the way out
+                // surfaces the system prompt for first-run users; for users
+                // who've already been prompted it's a no-op.
+                CGRequestScreenCaptureAccess()
+                log.error("SCShareableContent failed: \(error.localizedDescription, privacy: .public)")
+                await fail(message: RecordingError.permissionRequired.localizedDescription)
+                return
+            }
             try Task.checkCancellation()
             guard let scDisplay = content.displays.first(where: { $0.displayID == displayID }) else {
                 await fail(message: "Selected display is not available for capture")

@@ -21,6 +21,12 @@ struct PermissionsPanelView: View {
                         .foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+                LabeledContent("Rebuilds and TCC") {
+                    Text("If you've granted access but recording still fails, your TCC entry may be tied to an older build's code signature. Remove Pinnacle from the System Settings list, click Request Access here, and grant again.")
+                        .foregroundStyle(.secondary)
+                        .font(.callout)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
             } header: {
                 Text("Screen Recording")
             }
