@@ -234,16 +234,46 @@ final class AppStore: ObservableObject {
         }
     }
 
+    var currentShortcutBindings: [ShortcutBinding] {
+        container.preferencesService.value(for: Self.shortcutBindingsPreferenceKey)
+    }
+
+    /// Validates the proposed bindings, re-registers them with the shortcut
+    /// service, and persists on success. Returns `true` if applied, `false` if
+    /// the bindings conflict or registration failed (with `lastErrorMessage`
+    /// set in either case).
+    @discardableResult
+    func updateShortcutBindings(_ bindings: [ShortcutBinding]) -> Bool {
+        guard !ShortcutConflictValidator.containsConflicts(bindings) else {
+            lastErrorMessage = "Two or more shortcuts share the same key combination."
+            return false
+        }
+        do {
+            try container.shortcutService.register(bindings: bindings, handler: makeShortcutHandler())
+            container.preferencesService.setValue(bindings, for: Self.shortcutBindingsPreferenceKey)
+            container.overlayService.setShortcutBindings(bindings)
+            lastErrorMessage = nil
+            return true
+        } catch {
+            lastErrorMessage = "Failed to register shortcuts: \(error.localizedDescription)"
+            return false
+        }
+    }
+
+    private func makeShortcutHandler() -> @MainActor (ShortcutCommandID) -> Void {
+        { [weak self] shortcutCommand in
+            guard let self else { return }
+            send(command(for: shortcutCommand))
+        }
+    }
+
     private func configureShortcuts() {
         let storedBindings = container.preferencesService.value(for: Self.shortcutBindingsPreferenceKey)
         let hadConflicts = ShortcutConflictValidator.containsConflicts(storedBindings)
         let resolvedBindings = ShortcutConflictValidator.resolvedBindings(storedBindings)
 
         do {
-            try container.shortcutService.register(bindings: resolvedBindings) { [weak self] shortcutCommand in
-                guard let self else { return }
-                send(command(for: shortcutCommand))
-            }
+            try container.shortcutService.register(bindings: resolvedBindings, handler: makeShortcutHandler())
             // Only persist when the stored bindings were already conflict-free,
             // so a transient conflict (e.g. from an app update introducing a
             // new default) doesn't permanently overwrite user customizations.

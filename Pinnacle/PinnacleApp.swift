@@ -56,7 +56,7 @@ struct PinnacleApp: App {
         }
 
         Settings {
-            SettingsView()
+            SettingsView(store: store)
         }
 
 #if DEBUG

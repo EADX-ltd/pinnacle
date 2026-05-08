@@ -184,6 +184,83 @@ final class PinnacleSmokeTests: XCTestCase {
         XCTAssertEqual(harness.store.sessionMode, .idle)
     }
 
+    func testUpdateShortcutBindingsAppliesAndPersistsConflictFreeBindings() throws {
+        let preferencesService = UserDefaultsPreferencesService(
+            defaults: UserDefaults(suiteName: suiteName) ?? .standard
+        )
+        let shortcutService = SpyShortcutService()
+        let harness = makeStoreHarness(
+            shortcutService: shortcutService,
+            preferencesService: preferencesService
+        )
+
+        var newBindings = ShortcutBinding.defaults
+        // Move pen from Ctrl+Opt+1 to Ctrl+Opt+Shift+1 — still unique.
+        if let idx = newBindings.firstIndex(where: { $0.commandID == .selectPen }) {
+            newBindings[idx] = ShortcutBinding(commandID: .selectPen, key: .one, modifiers: [.control, .option, .shift])
+        }
+
+        let applied = harness.store.updateShortcutBindings(newBindings)
+
+        XCTAssertTrue(applied)
+        XCTAssertNil(harness.store.lastErrorMessage)
+        XCTAssertEqual(shortcutService.lastRegisteredBindings, newBindings)
+        XCTAssertEqual(harness.overlayService.lastShortcutBindings, newBindings)
+        XCTAssertEqual(
+            preferencesService.value(for: AppStore.shortcutBindingsPreferenceKey),
+            newBindings
+        )
+    }
+
+    func testUpdateShortcutBindingsRejectsConflictsWithoutPersisting() throws {
+        let preferencesService = UserDefaultsPreferencesService(
+            defaults: UserDefaults(suiteName: suiteName) ?? .standard
+        )
+        // Seed with a known good baseline.
+        preferencesService.setValue(ShortcutBinding.defaults, for: AppStore.shortcutBindingsPreferenceKey)
+
+        let shortcutService = SpyShortcutService()
+        let harness = makeStoreHarness(
+            shortcutService: shortcutService,
+            preferencesService: preferencesService
+        )
+        // Reset the spy after configureShortcuts has run on init, so
+        // post-init register calls are isolated.
+        let registeredAfterInit = shortcutService.lastRegisteredBindings
+
+        var conflicting = ShortcutBinding.defaults
+        // Force two commands onto the same key+modifiers combo.
+        if let idx = conflicting.firstIndex(where: { $0.commandID == .toggleRecording }) {
+            conflicting[idx] = ShortcutBinding(commandID: .toggleRecording, key: .a, modifiers: [.control, .option])
+        }
+
+        let applied = harness.store.updateShortcutBindings(conflicting)
+
+        XCTAssertFalse(applied)
+        XCTAssertNotNil(harness.store.lastErrorMessage)
+        // Spy state didn't change — the stored bindings remain the registered ones.
+        XCTAssertEqual(shortcutService.lastRegisteredBindings, registeredAfterInit)
+        XCTAssertEqual(
+            preferencesService.value(for: AppStore.shortcutBindingsPreferenceKey),
+            ShortcutBinding.defaults
+        )
+    }
+
+    func testCurrentShortcutBindingsExposesStoredValue() throws {
+        let preferencesService = UserDefaultsPreferencesService(
+            defaults: UserDefaults(suiteName: suiteName) ?? .standard
+        )
+        let custom = ShortcutBinding.defaults.map { binding in
+            binding.commandID == .undo
+                ? ShortcutBinding(commandID: .undo, key: .z, modifiers: [.control, .option, .command])
+                : binding
+        }
+        preferencesService.setValue(custom, for: AppStore.shortcutBindingsPreferenceKey)
+        let harness = makeStoreHarness(preferencesService: preferencesService)
+
+        XCTAssertEqual(harness.store.currentShortcutBindings, custom)
+    }
+
     func testSystemPermissionServiceReportsDeniedAfterRequestWhenPreflightFalse() async throws {
         // Use an isolated UserDefaults suite so the test doesn't pollute the
         // real app's persisted permission state.

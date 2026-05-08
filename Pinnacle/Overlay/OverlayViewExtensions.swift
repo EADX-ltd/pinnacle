@@ -105,6 +105,32 @@ extension OverlayViewModel.RadialItem {
     }
 }
 
+// MARK: - ShortcutCommandID display
+
+extension ShortcutCommandID {
+    var displayName: String {
+        switch self {
+        case .toggleAnnotation: return "Toggle Annotation"
+        case .toggleRecording: return "Start / Stop Recording"
+        case .togglePauseRecording: return "Pause / Resume Recording"
+        case .selectPen: return "Tool: Pen"
+        case .selectHighlighter: return "Tool: Highlighter"
+        case .selectArrow: return "Tool: Arrow"
+        case .selectRectangle: return "Tool: Rectangle"
+        case .selectEllipse: return "Tool: Ellipse"
+        case .selectText: return "Tool: Text"
+        case .selectEraser: return "Tool: Eraser"
+        case .undo: return "Undo"
+        case .redo: return "Redo"
+        case .clearAll: return "Clear All"
+        case .cycleColors: return "Cycle Colors"
+        case .increaseStroke: return "Increase Stroke"
+        case .decreaseStroke: return "Decrease Stroke"
+        case .toggleRadialControl: return "Toggle Radial Control"
+        }
+    }
+}
+
 // MARK: - ShortcutBinding display text
 
 extension ShortcutBinding {

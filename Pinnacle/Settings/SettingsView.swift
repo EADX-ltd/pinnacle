@@ -1,18 +1,17 @@
 import SwiftUI
 
 struct SettingsView: View {
+    @ObservedObject var store: AppStore
+
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text("Pinnacle Settings")
-                .font(.title3.weight(.semibold))
-            Text("Settings UI will be implemented in Phase 7.")
-                .foregroundStyle(.secondary)
+        TabView {
+            ShortcutEditorView(store: store)
+                .tabItem {
+                    Label("Shortcuts", systemImage: "keyboard")
+                }
         }
-        .padding(16)
-        .frame(minWidth: 360, minHeight: 140)
+        .frame(minWidth: 560, minHeight: 420)
     }
 }
 
-#Preview {
-    SettingsView()
-}
+// No SwiftUI #Preview here on purpose: see ShortcutEditorView for rationale.
