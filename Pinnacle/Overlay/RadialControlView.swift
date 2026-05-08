@@ -9,8 +9,8 @@ struct RadialControlView: View {
     @State private var dragGrabOffset: CGPoint?
     @State private var hoveredItem: OverlayViewModel.RadialItem?
 
-    private let centerSize: CGFloat = 44
-    private let primaryRadius: CGFloat = 88
+    private let centerSize: CGFloat = OverlayGeometry.radialCenterSize
+    private let primaryRadius: CGFloat = OverlayGeometry.radialPrimaryRingRadius
 
     var body: some View {
         ZStack {

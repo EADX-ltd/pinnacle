@@ -53,6 +53,12 @@ struct OverlayRootView: View {
                 if viewModel.isRadialControlEnabled && !viewModel.isPassThroughMode {
                     RadialControlView(viewModel: viewModel, availableSize: proxy.size)
                 }
+                HUDView(
+                    text: viewModel.hudText,
+                    color: viewModel.hudColor,
+                    tooltip: viewModel.hudTooltip
+                )
+                .padding(20)
             }
             .coordinateSpace(name: "overlay")
             .onAppear {
@@ -249,6 +255,14 @@ struct PassThroughRadialPanelView: View {
 
 enum OverlayGeometry {
     static let arrowHeadLength: CGFloat = 18
+    static let radialCenterSize: CGFloat = 44
+    static let radialPrimaryRingRadius: CGFloat = 88
+    /// Hit-test / dead-zone radius when the radial control is collapsed.
+    static let radialCollapsedRadius: CGFloat = 44
+    /// Hit-test / dead-zone radius when the ring is expanded but options closed.
+    static let radialExpandedRadius: CGFloat = 220
+    /// Hit-test / dead-zone radius when the options panel is open below the ring.
+    static let radialOptionsPanelRadius: CGFloat = 340
 }
 
 struct OverlayTextField: NSViewRepresentable {

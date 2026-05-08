@@ -42,6 +42,9 @@ protocol RecordingService: AnyObject {
     func stopRecording() throws
     func pauseRecording() throws
     func resumeRecording() throws
+    /// Awaits any in-flight finalization spawned by `stopRecording`.
+    /// Call before app termination so the output file is durable.
+    func awaitFinalization() async
     func setErrorHandler(_ handler: @escaping @MainActor (String) -> Void)
 }
 

@@ -155,12 +155,12 @@ final class AppKitOverlayService: OverlayService {
     private func orderActivePanelFront() {
         activeDisplayID = resolvedSessionDisplayID()
         let targetID = activeDisplayID
+        // All overlay panels stay visible so annotations stored in global
+        // coordinates render on every display; only the active panel takes
+        // keyboard focus.
         for (id, panel) in overlayPanelByDisplayID {
-            if id == targetID {
-                panel.orderFrontRegardless()
-            } else {
-                panel.orderOut(nil)
-            }
+            panel.orderFrontRegardless()
+            if id == targetID { panel.makeKey() }
         }
         for (id, panel) in passThroughControlPanelByDisplayID {
             if id == targetID || targetID == nil {
@@ -195,36 +195,40 @@ final class AppKitOverlayService: OverlayService {
             uniqueKeysWithValues: NSScreen.screens.compactMap(\.displayDescriptor).map { ($0.id, $0) }
         )
         activeDisplayID = resolvedSessionDisplayID()
-        let targetID = activeDisplayID
 
-        let staleIDs = Set(overlayPanelByDisplayID.keys).subtracting(targetID.map { [$0] } ?? [])
-        for staleID in staleIDs {
-            overlayPanelByDisplayID[staleID]?.close()
-            overlayPanelByDisplayID[staleID] = nil
-            passThroughControlPanelByDisplayID[staleID]?.close()
-            passThroughControlPanelByDisplayID[staleID] = nil
-            logger.log("Removed overlay panel for detached display id=\(staleID, privacy: .public)")
+        // Tear down panels for displays that have actually been disconnected
+        // since last sync. Panels for currently-attached displays stay alive so
+        // global-coordinate annotations remain rendered everywhere.
+        let presentIDs = Set(descriptorsByID.keys)
+        let detachedIDs = Set(overlayPanelByDisplayID.keys).subtracting(presentIDs)
+        for detachedID in detachedIDs {
+            overlayPanelByDisplayID[detachedID]?.close()
+            overlayPanelByDisplayID[detachedID] = nil
+            passThroughControlPanelByDisplayID[detachedID]?.close()
+            passThroughControlPanelByDisplayID[detachedID] = nil
+            logger.log("Removed overlay panel for detached display id=\(detachedID, privacy: .public)")
         }
 
-        guard let targetID, let descriptor = descriptorsByID[targetID] else {
+        guard !descriptorsByID.isEmpty else {
             refreshOverlayInteractionState()
             return
         }
 
-        if let panel = overlayPanelByDisplayID[targetID] {
-            if panel.frame != descriptor.frame {
-                panel.setFrame(descriptor.frame, display: true)
+        for (id, descriptor) in descriptorsByID {
+            if let panel = overlayPanelByDisplayID[id] {
+                if panel.frame != descriptor.frame {
+                    panel.setFrame(descriptor.frame, display: true)
+                }
+            } else {
+                guard let panel = makeOverlayPanel(for: descriptor) else {
+                    let message = "Failed to create overlay panel for display \(id)."
+                    logger.error("\(message, privacy: .public)")
+                    errorHandler?(message)
+                    continue
+                }
+                overlayPanelByDisplayID[id] = panel
+                logger.log("Created overlay panel for display id=\(id, privacy: .public)")
             }
-        } else {
-            guard let panel = makeOverlayPanel(for: descriptor) else {
-                let message = "Failed to create overlay panel for display \(targetID)."
-                logger.error("\(message, privacy: .public)")
-                errorHandler?(message)
-                refreshOverlayInteractionState()
-                return
-            }
-            overlayPanelByDisplayID[targetID] = panel
-            logger.log("Created overlay panel for display id=\(targetID, privacy: .public)")
         }
         refreshOverlayInteractionState()
     }
@@ -474,7 +478,13 @@ final class AppKitOverlayService: OverlayService {
         let globalPt = globalOverlayPoint(for: event, in: descriptor)
         let localPt = DisplayCoordinateTransformer(displayFrame: descriptor.frame).globalPointToLocal(globalPt)
 
-        let radialRadius: CGFloat = viewModel.isRadialExpanded ? 160 : 28
+        // Match the panel's hit-test radii so clicks on the options panel and
+        // ring buttons aren't simultaneously accepted as drawing input.
+        let radialRadius: CGFloat = viewModel.isOptionsOpen
+            ? OverlayGeometry.radialOptionsPanelRadius
+            : (viewModel.isRadialExpanded
+                ? OverlayGeometry.radialExpandedRadius
+                : OverlayGeometry.radialCollapsedRadius)
         if hypot(localPt.x - viewModel.radialCenter.x, localPt.y - viewModel.radialCenter.y) < radialRadius {
             return
         }

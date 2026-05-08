@@ -37,6 +37,9 @@ final class AppKitShortcutService: ShortcutService {
                 &reference
             )
             guard status == noErr else {
+                // Roll back any successful registrations from this call so we
+                // don't leave system-wide hotkeys active without a handler.
+                try? unregisterAll()
                 throw ShortcutServiceError.hotKeyRegistrationFailed(
                     command: binding.commandID,
                     status: status

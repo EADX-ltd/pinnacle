@@ -160,6 +160,68 @@ final class PinnacleSmokeTests: XCTestCase {
         XCTAssertEqual(harness.store.sessionMode, .idle)
     }
 
+    func testRecordingErrorDuringPausedFromRecordingAndAnnotatingReturnsToAnnotating() throws {
+        let harness = makeStoreHarness()
+        harness.store.send(.toggleAnnotation)
+        harness.store.send(.startRecording)
+        harness.store.send(.pauseRecording)
+        XCTAssertEqual(harness.store.sessionMode, .paused)
+
+        harness.recordingService.emitError("encoder failure")
+
+        XCTAssertEqual(harness.store.sessionMode, .annotating)
+        XCTAssertEqual(harness.store.lastErrorMessage, "encoder failure")
+    }
+
+    func testRecordingErrorDuringPausedFromRecordingReturnsToIdle() throws {
+        let harness = makeStoreHarness()
+        harness.store.send(.startRecording)
+        harness.store.send(.pauseRecording)
+        XCTAssertEqual(harness.store.sessionMode, .paused)
+
+        harness.recordingService.emitError("encoder failure")
+
+        XCTAssertEqual(harness.store.sessionMode, .idle)
+    }
+
+    func testSystemPermissionServiceReportsDeniedAfterRequestWhenPreflightFalse() async throws {
+        // Use an isolated UserDefaults suite so the test doesn't pollute the
+        // real app's persisted permission state.
+        let suiteName = "PinnacleTests.permission.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let service = SystemPermissionService(defaults: defaults)
+
+        // Sandbox tests run without screen recording entitlement, so preflight
+        // returns false. Before any request, that means notDetermined.
+        let initial = await service.refreshPermissions()
+        XCTAssertEqual(initial, .notDetermined)
+
+        service.requestScreenRecordingAccess()
+
+        // After a request, preflight=false now means the user has denied.
+        let afterRequest = await service.refreshPermissions()
+        XCTAssertEqual(afterRequest, .denied)
+    }
+
+    func testToggleAnnotationWhilePausedFlipsPreservedModeAndOverlay() throws {
+        let harness = makeStoreHarness()
+        harness.store.send(.startRecording)
+        harness.store.send(.pauseRecording)
+        XCTAssertEqual(harness.store.sessionMode, .paused)
+        XCTAssertEqual(harness.overlayService.startCount, 0)
+
+        // Turn annotation on while paused.
+        harness.store.send(.toggleAnnotation)
+        XCTAssertEqual(harness.store.sessionMode, .paused)
+        XCTAssertEqual(harness.overlayService.startCount, 1)
+
+        // Resume should land in recordingAndAnnotating since modeBeforePause flipped.
+        harness.store.send(.resumeRecording)
+        XCTAssertEqual(harness.store.sessionMode, .recordingAndAnnotating)
+    }
+
     func testCapturesSystemAudioToggleSyncsToService() throws {
         let harness = makeStoreHarness()
         XCTAssertFalse(harness.recordingService.capturesSystemAudio)
@@ -187,11 +249,15 @@ final class PinnacleSmokeTests: XCTestCase {
         )
         XCTAssertEqual(harness.store.sessionMode, .idle)
 
+        // The session falls back to defaults so the app remains functional…
         XCTAssertEqual(shortcutService.lastRegisteredBindings, ShortcutBinding.defaults)
+        // …but the user's stored (conflicting) bindings are preserved so a
+        // transient conflict cannot permanently overwrite their customizations.
         XCTAssertEqual(
             preferencesService.value(for: AppStore.shortcutBindingsPreferenceKey),
-            ShortcutBinding.defaults
+            conflictingBindings
         )
+        XCTAssertNotNil(harness.store.lastErrorMessage)
     }
 
     func testShortcutRegistrationPreservesEmptyBindingsWhenNoConflicts() throws {
@@ -851,6 +917,8 @@ private final class SpyRecordingService: RecordingService {
         isPaused = false
         resumeCount += 1
     }
+
+    func awaitFinalization() async {}
 
     func setErrorHandler(_ handler: @escaping @MainActor (String) -> Void) {
         errorHandler = handler

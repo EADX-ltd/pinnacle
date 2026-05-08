@@ -1,4 +1,5 @@
 import Foundation
+@testable import Pinnacle
 
 @MainActor
 struct NoOpShortcutService: ShortcutService {
@@ -47,6 +48,8 @@ final class InMemoryRecordingService: RecordingService {
         guard isRecording else { return }
         isPaused = false
     }
+
+    func awaitFinalization() async {}
 
     func setErrorHandler(_ handler: @escaping @MainActor (String) -> Void) {}
 }

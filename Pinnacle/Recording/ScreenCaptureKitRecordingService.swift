@@ -37,6 +37,8 @@ final class ScreenCaptureKitRecordingService: NSObject, RecordingService {
     private var pipeline: AVAssetWriterPipeline?
     private var streamOutputAdapter: StreamOutputAdapter?
     private var errorHandler: (@MainActor (String) -> Void)?
+    private var startupTask: Task<Void, Never>?
+    private var finalizationTask: Task<Void, Never>?
 
     private let videoQueue = DispatchQueue(label: "com.pinnacle.recording.video", qos: .userInteractive)
     private let audioQueue = DispatchQueue(label: "com.pinnacle.recording.audio", qos: .userInteractive)
@@ -82,7 +84,7 @@ final class ScreenCaptureKitRecordingService: NSObject, RecordingService {
 
         log.info("Starting recording to \(url.path, privacy: .public) (display=\(displayID), audio=\(captureAudio, privacy: .public))")
 
-        Task { [weak self] in
+        startupTask = Task { [weak self] in
             await self?.beginCapture(
                 displayID: displayID,
                 frame: frame,
@@ -100,16 +102,25 @@ final class ScreenCaptureKitRecordingService: NSObject, RecordingService {
         let stream = self.stream
         let pipeline = self.pipeline
         let url = self.outputURL
+        let pendingStartup = self.startupTask
 
         self.isRecording = false
         self.isPaused = false
         self.stream = nil
         self.pipeline = nil
         self.streamOutputAdapter = nil
+        self.startupTask = nil
 
         log.info("Stopping recording")
 
-        Task { [log, errorHandler] in
+        finalizationTask = Task { [log, errorHandler] in
+            // If startCapture is still in flight, cancel it and wait for the
+            // task to settle so we don't leak a live stream that arrives after
+            // we've cleared `self.stream`.
+            if let pendingStartup {
+                pendingStartup.cancel()
+                _ = await pendingStartup.value
+            }
             if let stream {
                 do {
                     try await stream.stopCapture()
@@ -120,8 +131,12 @@ final class ScreenCaptureKitRecordingService: NSObject, RecordingService {
                     }
                 }
             }
-            await pipeline?.finish()
-            if let url {
+            let outcome = await pipeline?.finish()
+            if let url, outcome == .canceledNoFrames {
+                await MainActor.run {
+                    errorHandler?("Recording stopped before any frames were captured. The file at \(url.lastPathComponent) was discarded.")
+                }
+            } else if let url {
                 log.info("Recording finalized at \(url.path, privacy: .public)")
             }
         }
@@ -130,15 +145,24 @@ final class ScreenCaptureKitRecordingService: NSObject, RecordingService {
     func pauseRecording() throws {
         guard isRecording, !isPaused else { return }
         isPaused = true
-        pipeline?.setPaused(true)
+        pipeline?.beginPause()
         log.info("Recording paused")
     }
 
     func resumeRecording() throws {
         guard isRecording, isPaused else { return }
         isPaused = false
-        pipeline?.setPaused(false)
+        pipeline?.endPause()
         log.info("Recording resumed")
+    }
+
+    func awaitFinalization() async {
+        if let startupTask {
+            _ = await startupTask.value
+        }
+        if let finalizationTask {
+            _ = await finalizationTask.value
+        }
     }
 
     private func beginCapture(
@@ -151,10 +175,12 @@ final class ScreenCaptureKitRecordingService: NSObject, RecordingService {
         pipeline: AVAssetWriterPipeline
     ) async {
         do {
+            try Task.checkCancellation()
             let content = try await SCShareableContent.excludingDesktopWindows(
                 false,
                 onScreenWindowsOnly: true
             )
+            try Task.checkCancellation()
             guard let scDisplay = content.displays.first(where: { $0.displayID == displayID }) else {
                 await fail(message: "Selected display is not available for capture")
                 return
@@ -186,6 +212,7 @@ final class ScreenCaptureKitRecordingService: NSObject, RecordingService {
                 }
             }
 
+            try Task.checkCancellation()
             try await stream.startCapture()
 
             await MainActor.run {
@@ -195,7 +222,10 @@ final class ScreenCaptureKitRecordingService: NSObject, RecordingService {
                 }
                 self.stream = stream
                 self.streamOutputAdapter = adapter
+                self.startupTask = nil
             }
+        } catch is CancellationError {
+            log.info("Capture startup canceled")
         } catch {
             await fail(message: "Failed to start capture: \(error.localizedDescription)")
         }
@@ -211,8 +241,8 @@ final class ScreenCaptureKitRecordingService: NSObject, RecordingService {
         self.pipeline = nil
         self.stream = nil
         self.streamOutputAdapter = nil
-        Task {
-            await pipeline?.finish()
+        finalizationTask = Task {
+            _ = await pipeline?.finish()
         }
     }
 

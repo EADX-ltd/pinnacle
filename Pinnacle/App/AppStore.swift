@@ -58,10 +58,6 @@ final class AppStore: ObservableObject {
         sessionMode == .annotating || sessionMode == .recordingAndAnnotating
     }
 
-    var canToggleAnnotation: Bool {
-        sessionMode != .paused
-    }
-
     var isRecording: Bool {
         sessionMode == .recording || sessionMode == .recordingAndAnnotating || sessionMode == .paused
     }
@@ -119,8 +115,16 @@ final class AppStore: ObservableObject {
             container.overlayService.stopOverlay()
             sessionMode = .recording
         case .paused:
-            // Intentional until recording engine pause/resume is wired.
-            break
+            // Toggle annotation while paused stays in `.paused`; only the
+            // pre-pause mode flips so resume returns the user to the matching
+            // recording-and-annotating or recording-only state.
+            if modeBeforePause == .recordingAndAnnotating {
+                container.overlayService.stopOverlay()
+                modeBeforePause = .recording
+            } else {
+                container.overlayService.startOverlay()
+                modeBeforePause = .recordingAndAnnotating
+            }
         }
     }
 
@@ -232,6 +236,7 @@ final class AppStore: ObservableObject {
 
     private func configureShortcuts() {
         let storedBindings = container.preferencesService.value(for: Self.shortcutBindingsPreferenceKey)
+        let hadConflicts = ShortcutConflictValidator.containsConflicts(storedBindings)
         let resolvedBindings = ShortcutConflictValidator.resolvedBindings(storedBindings)
 
         do {
@@ -239,7 +244,14 @@ final class AppStore: ObservableObject {
                 guard let self else { return }
                 send(command(for: shortcutCommand))
             }
-            container.preferencesService.setValue(resolvedBindings, for: Self.shortcutBindingsPreferenceKey)
+            // Only persist when the stored bindings were already conflict-free,
+            // so a transient conflict (e.g. from an app update introducing a
+            // new default) doesn't permanently overwrite user customizations.
+            if !hadConflicts {
+                container.preferencesService.setValue(resolvedBindings, for: Self.shortcutBindingsPreferenceKey)
+            } else {
+                lastErrorMessage = "Some saved shortcuts conflicted; using defaults for this session. Resolve the conflict in Settings to persist your customizations."
+            }
             container.overlayService.setShortcutBindings(resolvedBindings)
         } catch {
             lastErrorMessage = "Failed to register shortcuts: \(error.localizedDescription)"
@@ -251,16 +263,21 @@ final class AppStore: ObservableObject {
         container.recordingService.setErrorHandler { [weak self] message in
             guard let self else { return }
             lastErrorMessage = message
-            if isRecording {
-                modeBeforePause = nil
-                switch sessionMode {
-                case .recording, .paused:
-                    sessionMode = .idle
-                case .recordingAndAnnotating:
-                    sessionMode = .annotating
-                default:
-                    break
-                }
+            guard isRecording else { return }
+            // Capture pre-pause mode before clearing so the .paused branch can
+            // route back to the right post-error state (overlay stays running
+            // when paused-from `.recordingAndAnnotating`).
+            let pausedFromMode = modeBeforePause
+            modeBeforePause = nil
+            switch sessionMode {
+            case .recording:
+                sessionMode = .idle
+            case .recordingAndAnnotating:
+                sessionMode = .annotating
+            case .paused:
+                sessionMode = pausedFromMode == .recordingAndAnnotating ? .annotating : .idle
+            default:
+                break
             }
         }
     }

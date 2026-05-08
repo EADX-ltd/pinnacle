@@ -51,7 +51,11 @@ final class PassThroughContainerView: NSView {
 
         // Radial control – include ring radius plus options panel height when open.
         let radialCenter = vm.radialCenter
-        let outerRadius: CGFloat = vm.isOptionsOpen ? 340 : (vm.isRadialExpanded ? 220 : 44)
+        let outerRadius: CGFloat = vm.isOptionsOpen
+            ? OverlayGeometry.radialOptionsPanelRadius
+            : (vm.isRadialExpanded
+                ? OverlayGeometry.radialExpandedRadius
+                : OverlayGeometry.radialCollapsedRadius)
         if hypot(swiftUIPoint.x - radialCenter.x, swiftUIPoint.y - radialCenter.y) < outerRadius {
             return super.hitTest(point)
         }

@@ -11,6 +11,7 @@ import AppKit
 @MainActor
 @main
 struct PinnacleApp: App {
+    @NSApplicationDelegateAdaptor(PinnacleAppDelegate.self) private var appDelegate
     @StateObject private var store: AppStore
 
     init() {
@@ -29,7 +30,6 @@ struct PinnacleApp: App {
                 Button(store.isAnnotating ? "Stop Annotation" : "Start Annotation") {
                     store.send(.toggleAnnotation)
                 }
-                .disabled(!store.canToggleAnnotation)
 
                 Button(store.isRecording ? "Stop Recording" : "Start Recording") {
                     store.send(.toggleRecording)
@@ -64,5 +64,20 @@ struct PinnacleApp: App {
             ContentView(container: .live)
         }
 #endif
+    }
+}
+
+@MainActor
+final class PinnacleAppDelegate: NSObject, NSApplicationDelegate {
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        let recordingService = AppContainer.live.recordingService
+        if recordingService.isRecording {
+            try? recordingService.stopRecording()
+        }
+        Task { @MainActor in
+            await recordingService.awaitFinalization()
+            NSApp.reply(toApplicationShouldTerminate: true)
+        }
+        return .terminateLater
     }
 }

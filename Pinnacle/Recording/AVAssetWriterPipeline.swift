@@ -22,6 +22,14 @@ final class AVAssetWriterPipeline {
         }
     }
 
+    /// Outcome of `finish()` so callers can distinguish a written file from a
+    /// session that captured zero frames (which deletes the file).
+    enum FinishOutcome {
+        case finalized
+        case canceledNoFrames
+        case alreadyFinished
+    }
+
     let outputURL: URL
 
     private let writer: AVAssetWriter
@@ -32,6 +40,14 @@ final class AVAssetWriterPipeline {
     private var sessionStarted = false
     private var isPaused = false
     private var isFinished = false
+
+    // Pause handling: drop any sample whose PTS is between `pauseStart` and
+    // `pauseEnd`, and shift later samples back by the accumulated paused
+    // duration so the output timeline is continuous instead of containing a
+    // freeze the length of the user's pause.
+    private var pauseStart: CMTime?
+    private var totalPausedDuration: CMTime = .zero
+    private var lastWrittenVideoPTS: CMTime?
 
     init(outputURL: URL, width: Int, height: Int, captureAudio: Bool) throws {
         self.outputURL = outputURL
@@ -95,40 +111,92 @@ final class AVAssetWriterPipeline {
         }
     }
 
-    func setPaused(_ paused: Bool) {
+    func beginPause() {
         lock.lock()
-        isPaused = paused
-        lock.unlock()
+        defer { lock.unlock() }
+        guard !isPaused else { return }
+        isPaused = true
+        // pauseStart is set lazily on the next sample so we anchor to a real
+        // capture timestamp rather than wall clock.
+        pauseStart = nil
+    }
+
+    func endPause() {
+        lock.lock()
+        defer { lock.unlock() }
+        guard isPaused else { return }
+        isPaused = false
+        // Do NOT clear pauseStart here. It marks the first paused sample's PTS
+        // and is consumed by the next post-resume appendVideo/appendAudio,
+        // which extends totalPausedDuration by (pts - pauseStart). If zero
+        // samples arrived during the pause, pauseStart was never assigned and
+        // the next call's `if let pauseStart` guard correctly skips accumulation.
     }
 
     func appendVideo(_ sampleBuffer: CMSampleBuffer) {
         lock.lock()
         defer { lock.unlock() }
-        guard !isFinished, !isPaused else { return }
+        guard !isFinished else { return }
         let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+
+        if isPaused {
+            if pauseStart == nil { pauseStart = pts }
+            return
+        }
+
+        // First sample after un-pause: extend totalPausedDuration by the gap.
+        if let pauseStart {
+            totalPausedDuration = CMTimeAdd(totalPausedDuration, CMTimeSubtract(pts, pauseStart))
+            self.pauseStart = nil
+        }
+
+        let adjustedPTS = CMTimeSubtract(pts, totalPausedDuration)
+
         if !sessionStarted {
-            writer.startSession(atSourceTime: pts)
+            writer.startSession(atSourceTime: adjustedPTS)
             sessionStarted = true
         }
-        if videoInput.isReadyForMoreMediaData {
-            videoInput.append(sampleBuffer)
+
+        // Guard against monotonic-PTS violations after rebasing.
+        if let last = lastWrittenVideoPTS, CMTimeCompare(adjustedPTS, last) <= 0 {
+            return
+        }
+
+        if videoInput.isReadyForMoreMediaData,
+           let rebased = retimedSampleBuffer(sampleBuffer, newPTS: adjustedPTS) {
+            videoInput.append(rebased)
+            lastWrittenVideoPTS = adjustedPTS
         }
     }
 
     func appendAudio(_ sampleBuffer: CMSampleBuffer) {
         lock.lock()
         defer { lock.unlock() }
-        guard !isFinished, !isPaused, sessionStarted, let input = audioInput else { return }
-        if input.isReadyForMoreMediaData {
-            input.append(sampleBuffer)
+        guard !isFinished, sessionStarted, let input = audioInput else { return }
+        let pts = CMSampleBufferGetPresentationTimeStamp(sampleBuffer)
+
+        if isPaused {
+            if pauseStart == nil { pauseStart = pts }
+            return
+        }
+        if let pauseStart {
+            totalPausedDuration = CMTimeAdd(totalPausedDuration, CMTimeSubtract(pts, pauseStart))
+            self.pauseStart = nil
+        }
+
+        let adjustedPTS = CMTimeSubtract(pts, totalPausedDuration)
+
+        if input.isReadyForMoreMediaData,
+           let rebased = retimedSampleBuffer(sampleBuffer, newPTS: adjustedPTS) {
+            input.append(rebased)
         }
     }
 
-    func finish() async {
+    func finish() async -> FinishOutcome {
         lock.lock()
         if isFinished {
             lock.unlock()
-            return
+            return .alreadyFinished
         }
         isFinished = true
         let writerRef = writer
@@ -141,8 +209,36 @@ final class AVAssetWriterPipeline {
         audioRef?.markAsFinished()
         if didStart {
             await writerRef.finishWriting()
+            return .finalized
         } else {
             writerRef.cancelWriting()
+            return .canceledNoFrames
         }
+    }
+
+    private func retimedSampleBuffer(_ source: CMSampleBuffer, newPTS: CMTime) -> CMSampleBuffer? {
+        var count: CMItemCount = 0
+        guard CMSampleBufferGetSampleTimingInfoArray(source, entryCount: 0, arrayToFill: nil, entriesNeededOut: &count) == noErr,
+              count > 0 else { return source }
+        var timings = [CMSampleTimingInfo](repeating: CMSampleTimingInfo(), count: count)
+        guard CMSampleBufferGetSampleTimingInfoArray(source, entryCount: count, arrayToFill: &timings, entriesNeededOut: nil) == noErr else { return source }
+        // Single-presentation buffers are the common SCStream case; offset all entries uniformly.
+        let originalPTS = CMSampleBufferGetPresentationTimeStamp(source)
+        let delta = CMTimeSubtract(newPTS, originalPTS)
+        for index in 0..<timings.count {
+            timings[index].presentationTimeStamp = CMTimeAdd(timings[index].presentationTimeStamp, delta)
+            if CMTIME_IS_VALID(timings[index].decodeTimeStamp) {
+                timings[index].decodeTimeStamp = CMTimeAdd(timings[index].decodeTimeStamp, delta)
+            }
+        }
+        var copy: CMSampleBuffer?
+        let status = CMSampleBufferCreateCopyWithNewTiming(
+            allocator: kCFAllocatorDefault,
+            sampleBuffer: source,
+            sampleTimingEntryCount: count,
+            sampleTimingArray: timings,
+            sampleBufferOut: &copy
+        )
+        return status == noErr ? copy : nil
     }
 }
