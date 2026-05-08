@@ -327,6 +327,75 @@ final class PinnacleSmokeTests: XCTestCase {
         XCTAssertEqual(harness.store.currentShortcutBindings, custom)
     }
 
+    func testSetOutputDirectoryAppliesToServiceAndPersists() throws {
+        let preferencesService = UserDefaultsPreferencesService(
+            defaults: UserDefaults(suiteName: suiteName) ?? .standard
+        )
+        let harness = makeStoreHarness(preferencesService: preferencesService)
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PinnacleTests-output-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+
+        try harness.store.setOutputDirectory(tempDir)
+
+        XCTAssertEqual(harness.recordingService.outputDirectory.path, tempDir.path)
+        let stored = preferencesService.value(for: AppStore.outputDirectoryPathPreferenceKey)
+        XCTAssertEqual(stored, tempDir.path)
+    }
+
+    func testSetOutputDirectoryRejectsNonDirectoryPath() throws {
+        let harness = makeStoreHarness()
+        // Create a regular file and try to use it as a directory.
+        let tempFile = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PinnacleTests-not-a-dir-\(UUID().uuidString).txt")
+        FileManager.default.createFile(atPath: tempFile.path, contents: Data("hi".utf8))
+        defer { try? FileManager.default.removeItem(at: tempFile) }
+
+        XCTAssertThrowsError(try harness.store.setOutputDirectory(tempFile)) { error in
+            XCTAssertEqual(error as? AppStore.OutputDirectoryError, .notADirectory)
+        }
+    }
+
+    func testResetOutputDirectoryRestoresDefault() throws {
+        let preferencesService = UserDefaultsPreferencesService(
+            defaults: UserDefaults(suiteName: suiteName) ?? .standard
+        )
+        let harness = makeStoreHarness(preferencesService: preferencesService)
+        let tempDir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PinnacleTests-output-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: tempDir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: tempDir) }
+        try harness.store.setOutputDirectory(tempDir)
+        XCTAssertEqual(harness.recordingService.outputDirectory.path, tempDir.path)
+
+        harness.store.resetOutputDirectory()
+
+        XCTAssertEqual(
+            harness.recordingService.outputDirectory.path,
+            ScreenCaptureKitRecordingService.defaultOutputDirectory().path
+        )
+        XCTAssertEqual(
+            preferencesService.value(for: AppStore.outputDirectoryPathPreferenceKey),
+            ""
+        )
+    }
+
+    func testUniqueFileURLAvoidsExistingFiles() throws {
+        let dir = FileManager.default.temporaryDirectory
+            .appendingPathComponent("PinnacleTests-collision-\(UUID().uuidString)", isDirectory: true)
+        try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let baseName = "Pinnacle-X"
+        let firstURL = dir.appendingPathComponent("\(baseName).mp4")
+        FileManager.default.createFile(atPath: firstURL.path, contents: Data())
+
+        let next = ScreenCaptureKitRecordingService.uniqueFileURL(in: dir, baseName: baseName, ext: "mp4")
+
+        XCTAssertNotEqual(next.path, firstURL.path)
+        XCTAssertEqual(next.lastPathComponent, "\(baseName)-1.mp4")
+    }
+
     func testRadialEnabledLoadedFromPreferencesOnInitAndPropagated() throws {
         let preferencesService = UserDefaultsPreferencesService(
             defaults: UserDefaults(suiteName: suiteName) ?? .standard
@@ -1167,6 +1236,7 @@ private final class SpyRecordingService: RecordingService {
     private(set) var isPaused = false
     private(set) var outputURL: URL?
     var capturesSystemAudio: Bool = false
+    var outputDirectory: URL = FileManager.default.temporaryDirectory
     private(set) var startCount = 0
     private(set) var stopCount = 0
     private(set) var pauseCount = 0

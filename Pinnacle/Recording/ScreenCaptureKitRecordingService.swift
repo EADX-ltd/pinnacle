@@ -32,6 +32,7 @@ final class ScreenCaptureKitRecordingService: NSObject, RecordingService {
             }
         }
     }
+    var outputDirectory: URL = ScreenCaptureKitRecordingService.defaultOutputDirectory()
 
     private var stream: SCStream?
     private var pipeline: AVAssetWriterPipeline?
@@ -246,16 +247,36 @@ final class ScreenCaptureKitRecordingService: NSObject, RecordingService {
         }
     }
 
-    private func makeOutputURL() -> URL {
+    static func defaultOutputDirectory() -> URL {
         let base = FileManager.default.urls(for: .moviesDirectory, in: .userDomainMask).first
             ?? FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first
             ?? FileManager.default.temporaryDirectory
-        let dir = base.appendingPathComponent("Pinnacle", isDirectory: true)
+        return base.appendingPathComponent("Pinnacle", isDirectory: true)
+    }
+
+    private func makeOutputURL() -> URL {
         let formatter = DateFormatter()
         formatter.dateFormat = "yyyyMMdd-HHmmss"
         formatter.locale = Locale(identifier: "en_US_POSIX")
-        let name = "Pinnacle-\(formatter.string(from: Date())).mp4"
-        return dir.appendingPathComponent(name)
+        let baseName = "Pinnacle-\(formatter.string(from: Date()))"
+        return Self.uniqueFileURL(in: outputDirectory, baseName: baseName, ext: "mp4")
+    }
+
+    /// Returns a URL within `directory` that does not collide with any
+    /// existing file. If `<base>.<ext>` is taken, tries `<base>-1.<ext>`,
+    /// `<base>-2.<ext>`, … up to a sane bound before returning the last try.
+    static func uniqueFileURL(in directory: URL, baseName: String, ext: String) -> URL {
+        let candidate = directory.appendingPathComponent("\(baseName).\(ext)")
+        guard FileManager.default.fileExists(atPath: candidate.path) else { return candidate }
+        for index in 1..<100 {
+            let alternative = directory.appendingPathComponent("\(baseName)-\(index).\(ext)")
+            if !FileManager.default.fileExists(atPath: alternative.path) {
+                return alternative
+            }
+        }
+        // Bound exhausted (extremely unlikely with second-resolution timestamp);
+        // fall back to a UUID suffix so we never overwrite.
+        return directory.appendingPathComponent("\(baseName)-\(UUID().uuidString).\(ext)")
     }
 }
 

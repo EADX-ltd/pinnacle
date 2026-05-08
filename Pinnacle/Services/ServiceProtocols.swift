@@ -39,6 +39,9 @@ protocol RecordingService: AnyObject {
     var isPaused: Bool { get }
     var outputURL: URL? { get }
     var capturesSystemAudio: Bool { get set }
+    /// Directory new recording files will be written to. Created on demand at
+    /// `startRecording`. Default is `~/Movies/Pinnacle/`.
+    var outputDirectory: URL { get set }
     func startRecording() throws
     func stopRecording() throws
     func pauseRecording() throws

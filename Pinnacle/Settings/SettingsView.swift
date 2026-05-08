@@ -17,6 +17,10 @@ struct SettingsView: View {
                 .tabItem {
                     Label("Radial", systemImage: "circle.grid.2x2")
                 }
+            OutputPanelView(store: store)
+                .tabItem {
+                    Label("Output", systemImage: "square.and.arrow.down")
+                }
             PermissionsPanelView(store: store)
                 .tabItem {
                     Label("Permissions", systemImage: "lock.shield")

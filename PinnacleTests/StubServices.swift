@@ -29,6 +29,7 @@ final class InMemoryRecordingService: RecordingService {
     private(set) var isPaused = false
     private(set) var outputURL: URL?
     var capturesSystemAudio: Bool = false
+    var outputDirectory: URL = FileManager.default.temporaryDirectory
 
     func startRecording() throws {
         isRecording = true

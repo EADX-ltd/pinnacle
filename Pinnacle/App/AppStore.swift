@@ -41,6 +41,18 @@ final class AppStore: ObservableObject {
         name: "preferences.radial.defaultPosition",
         defaultValue: .right
     )
+    static let preferencesSchemaVersionKey = PreferenceKey<Int>(
+        name: "preferences.schemaVersion",
+        defaultValue: 0  // 0 = legacy / never written
+    )
+    static let currentPreferencesSchemaVersion = 1
+    /// Stored as POSIX path (String) rather than `URL` so older toolchains
+    /// stay readable and the JSON encoding is human-inspectable. An empty
+    /// string means "use the architecture default".
+    static let outputDirectoryPathPreferenceKey = PreferenceKey<String>(
+        name: "preferences.recording.outputDirectory",
+        defaultValue: ""
+    )
 
     @Published private(set) var sessionMode: SessionMode = .idle
     @Published private(set) var toolState: ToolState = .default
@@ -57,6 +69,7 @@ final class AppStore: ObservableObject {
 
     init(container: AppContainer) {
         self.container = container
+        Self.migratePreferencesIfNeeded(using: container.preferencesService)
         // Load persisted tool styles before pushing to overlay so a fresh
         // session starts with the user's saved colors/widths instead of
         // defaults flashing through.
@@ -65,6 +78,14 @@ final class AppStore: ObservableObject {
         configureOverlay()
         configureShortcuts()
         configureRecording()
+    }
+
+    private static func migratePreferencesIfNeeded(using preferences: PreferencesService) {
+        let stored = preferences.value(for: preferencesSchemaVersionKey)
+        guard stored < currentPreferencesSchemaVersion else { return }
+        // No migrations needed at v1 — the existing keys are already shaped
+        // to the v1 schema. Future migrations branch on `stored`'s value here.
+        preferences.setValue(currentPreferencesSchemaVersion, for: preferencesSchemaVersionKey)
     }
 
     private static func toolStateLoaded(from preferences: PreferencesService) -> ToolState {
@@ -406,8 +427,67 @@ final class AppStore: ObservableObject {
         }
     }
 
+    var outputDirectory: URL {
+        let stored = container.preferencesService.value(for: Self.outputDirectoryPathPreferenceKey)
+        if !stored.isEmpty {
+            return URL(fileURLWithPath: stored, isDirectory: true)
+        }
+        return ScreenCaptureKitRecordingService.defaultOutputDirectory()
+    }
+
+    enum OutputDirectoryError: LocalizedError {
+        case notADirectory
+        case notWritable
+
+        var errorDescription: String? {
+            switch self {
+            case .notADirectory:
+                return "Selected path is not a directory."
+            case .notWritable:
+                return "Selected directory cannot be written to."
+            }
+        }
+    }
+
+    /// Validate the chosen directory and apply it to both the live recording
+    /// service and persisted preferences. Throws if the path doesn't exist or
+    /// isn't writable so the caller can surface the failure in the UI.
+    func setOutputDirectory(_ url: URL) throws {
+        var isDir: ObjCBool = false
+        let exists = FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir)
+        if exists, !isDir.boolValue {
+            throw OutputDirectoryError.notADirectory
+        }
+        if !exists {
+            try FileManager.default.createDirectory(at: url, withIntermediateDirectories: true)
+        }
+        guard FileManager.default.isWritableFile(atPath: url.path) else {
+            throw OutputDirectoryError.notWritable
+        }
+        container.recordingService.outputDirectory = url
+        container.preferencesService.setValue(url.path, for: Self.outputDirectoryPathPreferenceKey)
+    }
+
+    /// Restore the recording output directory to the architecture default.
+    func resetOutputDirectory() {
+        let defaultURL = ScreenCaptureKitRecordingService.defaultOutputDirectory()
+        container.recordingService.outputDirectory = defaultURL
+        container.preferencesService.setValue("", for: Self.outputDirectoryPathPreferenceKey)
+    }
+
     private func configureRecording() {
         container.recordingService.capturesSystemAudio = capturesSystemAudio
+        // Apply persisted output directory (falls back to default if unset or
+        // missing). Validation happens on `setOutputDirectory`; here we trust
+        // the persisted value and only fall back if the path is gone.
+        let stored = container.preferencesService.value(for: Self.outputDirectoryPathPreferenceKey)
+        if !stored.isEmpty {
+            let url = URL(fileURLWithPath: stored, isDirectory: true)
+            var isDir: ObjCBool = false
+            if FileManager.default.fileExists(atPath: url.path, isDirectory: &isDir), isDir.boolValue {
+                container.recordingService.outputDirectory = url
+            }
+        }
         container.recordingService.setErrorHandler { [weak self] message in
             guard let self else { return }
             lastErrorMessage = message
