@@ -327,6 +327,29 @@ final class PinnacleSmokeTests: XCTestCase {
         XCTAssertEqual(harness.store.currentShortcutBindings, custom)
     }
 
+    func testPermissionStatusReturnsServiceValue() async throws {
+        let spyPermissions = SpyPermissionService(initialStatus: .granted)
+        let harness = makeStoreHarness(permissionService: spyPermissions)
+
+        let initial = await harness.store.permissionStatus()
+        XCTAssertEqual(initial, .granted)
+
+        spyPermissions.setStubbedStatus(.denied)
+        let updated = await harness.store.permissionStatus()
+        XCTAssertEqual(updated, .denied)
+    }
+
+    func testRequestScreenRecordingAccessForwardsToService() throws {
+        let spyPermissions = SpyPermissionService()
+        let harness = makeStoreHarness(permissionService: spyPermissions)
+
+        XCTAssertEqual(spyPermissions.requestCallCount, 0)
+
+        harness.store.requestScreenRecordingAccess()
+
+        XCTAssertEqual(spyPermissions.requestCallCount, 1)
+    }
+
     func testSystemPermissionServiceReportsDeniedAfterRequestWhenPreflightFalse() async throws {
         // Use an isolated UserDefaults suite so the test doesn't pollute the
         // real app's persisted permission state.
@@ -913,7 +936,8 @@ final class PinnacleSmokeTests: XCTestCase {
 private func makeStoreHarness(
     shouldRecordingStartThrow: Bool = false,
     shortcutService: SpyShortcutService? = nil,
-    preferencesService: UserDefaultsPreferencesService? = nil
+    preferencesService: UserDefaultsPreferencesService? = nil,
+    permissionService: PermissionService? = nil
 ) -> StoreHarness {
     let shortcutService = shortcutService ?? SpyShortcutService()
     let preferencesService = preferencesService ?? UserDefaultsPreferencesService(
@@ -921,7 +945,7 @@ private func makeStoreHarness(
     )
     let overlayService = SpyOverlayService()
     let recordingService = SpyRecordingService(shouldThrowOnStart: shouldRecordingStartThrow)
-    let permissionService = NoOpPermissionService()
+    let permissionService = permissionService ?? NoOpPermissionService()
 
     let container = AppContainer(
         shortcutService: shortcutService,
@@ -1074,6 +1098,40 @@ private final class SpyRecordingService: RecordingService {
 
 private enum RecordingStartError: Error {
     case failed
+}
+
+final class SpyPermissionService: PermissionService {
+    private let lock = NSLock()
+    private var stubbedStatus: PermissionStatus
+    private var requestCount: Int = 0
+
+    init(initialStatus: PermissionStatus = .notDetermined) {
+        self.stubbedStatus = initialStatus
+    }
+
+    var requestCallCount: Int {
+        lock.lock()
+        defer { lock.unlock() }
+        return requestCount
+    }
+
+    func setStubbedStatus(_ status: PermissionStatus) {
+        lock.lock()
+        stubbedStatus = status
+        lock.unlock()
+    }
+
+    func refreshPermissions() async -> PermissionStatus {
+        lock.lock()
+        defer { lock.unlock() }
+        return stubbedStatus
+    }
+
+    func requestScreenRecordingAccess() {
+        lock.lock()
+        requestCount += 1
+        lock.unlock()
+    }
 }
 
 @MainActor

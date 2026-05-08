@@ -286,6 +286,19 @@ final class AppStore: ObservableObject {
         }
     }
 
+    /// Current screen-recording permission status, computed via the live
+    /// PermissionService. Async because the underlying TCC API is async-shaped.
+    func permissionStatus() async -> PermissionStatus {
+        await container.permissionService.refreshPermissions()
+    }
+
+    /// Triggers the screen-recording TCC prompt the first time, and records
+    /// internally that a request has been made so subsequent preflight=false
+    /// readings can be reported as `.denied` rather than `.notDetermined`.
+    func requestScreenRecordingAccess() {
+        container.permissionService.requestScreenRecordingAccess()
+    }
+
     func currentToolConfig(for tool: ToolKind) -> ToolConfig {
         toolState.configs[tool]
             ?? ToolState.default.configs[tool]

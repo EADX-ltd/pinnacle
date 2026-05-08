@@ -13,6 +13,10 @@ struct SettingsView: View {
                 .tabItem {
                     Label("Tools", systemImage: "paintbrush.pointed")
                 }
+            PermissionsPanelView(store: store)
+                .tabItem {
+                    Label("Permissions", systemImage: "lock.shield")
+                }
         }
         .frame(minWidth: 560, minHeight: 420)
     }
