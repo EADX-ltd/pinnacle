@@ -13,6 +13,10 @@ struct SettingsView: View {
                 .tabItem {
                     Label("Tools", systemImage: "paintbrush.pointed")
                 }
+            RadialControlPanelView(store: store)
+                .tabItem {
+                    Label("Radial", systemImage: "circle.grid.2x2")
+                }
             PermissionsPanelView(store: store)
                 .tabItem {
                     Label("Permissions", systemImage: "lock.shield")

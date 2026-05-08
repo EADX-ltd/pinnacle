@@ -136,6 +136,10 @@ final class AppKitOverlayService: OverlayService {
         }
     }
 
+    func setRadialDefaultPosition(_ position: RadialPosition) {
+        viewModel.defaultRadialPosition = position
+    }
+
     func setShortcutBindings(_ bindings: [ShortcutBinding]) {
         viewModel.shortcutLabelByCommand = Dictionary(
             uniqueKeysWithValues: bindings.map { ($0.commandID, $0.displayText) }

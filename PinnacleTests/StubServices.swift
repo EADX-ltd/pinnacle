@@ -17,6 +17,7 @@ struct NoOpOverlayService: OverlayService {
     func redoLastChange() {}
     func clearAll(allowUndo: Bool) {}
     func setRadialControlVisible(_ isVisible: Bool) {}
+    func setRadialDefaultPosition(_ position: RadialPosition) {}
     func setShortcutBindings(_ bindings: [ShortcutBinding]) {}
     func setCommandHandler(_ handler: @escaping @MainActor (OverlayAction) -> Void) {}
     func setErrorHandler(_ handler: @escaping @MainActor (String) -> Void) {}

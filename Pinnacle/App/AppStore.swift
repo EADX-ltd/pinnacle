@@ -33,6 +33,14 @@ final class AppStore: ObservableObject {
         name: "preferences.toolStyles.extendedOptions",
         defaultValue: ToolState.default.extendedOptions
     )
+    static let radialControlEnabledPreferenceKey = PreferenceKey<Bool>(
+        name: "preferences.radial.enabled",
+        defaultValue: true
+    )
+    static let radialDefaultPositionPreferenceKey = PreferenceKey<RadialPosition>(
+        name: "preferences.radial.defaultPosition",
+        defaultValue: .right
+    )
 
     @Published private(set) var sessionMode: SessionMode = .idle
     @Published private(set) var toolState: ToolState = .default
@@ -53,6 +61,7 @@ final class AppStore: ObservableObject {
         // session starts with the user's saved colors/widths instead of
         // defaults flashing through.
         toolState = Self.toolStateLoaded(from: container.preferencesService)
+        isRadialControlVisible = container.preferencesService.value(for: Self.radialControlEnabledPreferenceKey)
         configureOverlay()
         configureShortcuts()
         configureRecording()
@@ -219,6 +228,7 @@ final class AppStore: ObservableObject {
         case .toggleRadialControl:
             isRadialControlVisible.toggle()
             container.overlayService.setRadialControlVisible(isRadialControlVisible)
+            container.preferencesService.setValue(isRadialControlVisible, for: Self.radialControlEnabledPreferenceKey)
         default:
             break
         }
@@ -284,6 +294,23 @@ final class AppStore: ObservableObject {
             lastErrorMessage = "Failed to register shortcuts: \(error.localizedDescription)"
             return false
         }
+    }
+
+    var isRadialControlEnabled: Bool { isRadialControlVisible }
+
+    func setRadialControlEnabled(_ enabled: Bool) {
+        isRadialControlVisible = enabled
+        container.overlayService.setRadialControlVisible(enabled)
+        container.preferencesService.setValue(enabled, for: Self.radialControlEnabledPreferenceKey)
+    }
+
+    var radialDefaultPosition: RadialPosition {
+        container.preferencesService.value(for: Self.radialDefaultPositionPreferenceKey)
+    }
+
+    func setRadialDefaultPosition(_ position: RadialPosition) {
+        container.overlayService.setRadialDefaultPosition(position)
+        container.preferencesService.setValue(position, for: Self.radialDefaultPositionPreferenceKey)
     }
 
     /// Restore shortcut bindings to architecture defaults, persist, and
@@ -406,6 +433,9 @@ final class AppStore: ObservableObject {
     private func configureOverlay() {
         container.overlayService.update(toolState: toolState)
         container.overlayService.setRadialControlVisible(isRadialControlVisible)
+        container.overlayService.setRadialDefaultPosition(
+            container.preferencesService.value(for: Self.radialDefaultPositionPreferenceKey)
+        )
         container.overlayService.setErrorHandler { [weak self] message in
             self?.lastErrorMessage = message
         }

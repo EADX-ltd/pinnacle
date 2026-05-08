@@ -75,6 +75,18 @@ enum SessionMode: Equatable {
     }
 }
 
+enum RadialPosition: String, Codable, CaseIterable {
+    case right
+    case left
+
+    var displayName: String {
+        switch self {
+        case .right: return "Right"
+        case .left: return "Left"
+        }
+    }
+}
+
 enum ToolKind: String, Codable, CaseIterable {
     case pen
     case highlighter

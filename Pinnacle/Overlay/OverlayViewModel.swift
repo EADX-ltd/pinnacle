@@ -38,6 +38,7 @@ final class OverlayViewModel: ObservableObject {
     @Published var pendingExtendedOptions: ToolExtendedOptions = .default
     @Published var radialCenter = CGPoint(x: 220, y: 220)
     @Published var shortcutLabelByCommand: [ShortcutCommandID: String] = [:]
+    @Published var defaultRadialPosition: RadialPosition = .right
 
     let textEditing = TextEditingViewModel()
 
@@ -289,10 +290,12 @@ final class OverlayViewModel: ObservableObject {
     func ensureInitialRadialPosition(in size: CGSize) {
         guard !hasInitializedRadialPosition else { return }
         hasInitializedRadialPosition = true
-        moveRadialControl(
-            to: CGPoint(x: size.width - 220, y: 220),
-            in: size
-        )
+        let x: CGFloat
+        switch defaultRadialPosition {
+        case .right: x = size.width - 220
+        case .left: x = 220
+        }
+        moveRadialControl(to: CGPoint(x: x, y: 220), in: size)
     }
 
     func selectPrimaryItem(_ item: RadialItem) {

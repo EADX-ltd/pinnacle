@@ -327,6 +327,81 @@ final class PinnacleSmokeTests: XCTestCase {
         XCTAssertEqual(harness.store.currentShortcutBindings, custom)
     }
 
+    func testRadialEnabledLoadedFromPreferencesOnInitAndPropagated() throws {
+        let preferencesService = UserDefaultsPreferencesService(
+            defaults: UserDefaults(suiteName: suiteName) ?? .standard
+        )
+        preferencesService.setValue(false, for: AppStore.radialControlEnabledPreferenceKey)
+        let harness = makeStoreHarness(preferencesService: preferencesService)
+
+        XCTAssertFalse(harness.store.isRadialControlEnabled)
+        XCTAssertFalse(harness.overlayService.lastRadialVisibleValue)
+    }
+
+    func testSetRadialControlEnabledPersistsAndPropagates() throws {
+        let preferencesService = UserDefaultsPreferencesService(
+            defaults: UserDefaults(suiteName: suiteName) ?? .standard
+        )
+        let harness = makeStoreHarness(preferencesService: preferencesService)
+
+        harness.store.setRadialControlEnabled(false)
+
+        XCTAssertFalse(harness.store.isRadialControlEnabled)
+        XCTAssertFalse(harness.overlayService.lastRadialVisibleValue)
+        XCTAssertEqual(
+            preferencesService.value(for: AppStore.radialControlEnabledPreferenceKey),
+            false
+        )
+    }
+
+    func testToggleRadialControlPersistsValue() throws {
+        let preferencesService = UserDefaultsPreferencesService(
+            defaults: UserDefaults(suiteName: suiteName) ?? .standard
+        )
+        let harness = makeStoreHarness(preferencesService: preferencesService)
+        XCTAssertTrue(preferencesService.value(for: AppStore.radialControlEnabledPreferenceKey))
+
+        harness.store.send(.toggleRadialControl)
+
+        XCTAssertFalse(preferencesService.value(for: AppStore.radialControlEnabledPreferenceKey))
+    }
+
+    func testRadialDefaultPositionLoadedFromPreferencesAndPropagatedOnInit() throws {
+        let preferencesService = UserDefaultsPreferencesService(
+            defaults: UserDefaults(suiteName: suiteName) ?? .standard
+        )
+        preferencesService.setValue(RadialPosition.left, for: AppStore.radialDefaultPositionPreferenceKey)
+        let harness = makeStoreHarness(preferencesService: preferencesService)
+
+        XCTAssertEqual(harness.store.radialDefaultPosition, .left)
+        XCTAssertEqual(harness.overlayService.lastRadialDefaultPosition, .left)
+    }
+
+    func testSetRadialDefaultPositionPersistsAndPropagates() throws {
+        let preferencesService = UserDefaultsPreferencesService(
+            defaults: UserDefaults(suiteName: suiteName) ?? .standard
+        )
+        let harness = makeStoreHarness(preferencesService: preferencesService)
+
+        harness.store.setRadialDefaultPosition(.left)
+
+        XCTAssertEqual(harness.store.radialDefaultPosition, .left)
+        XCTAssertEqual(harness.overlayService.lastRadialDefaultPosition, .left)
+        XCTAssertEqual(
+            preferencesService.value(for: AppStore.radialDefaultPositionPreferenceKey),
+            .left
+        )
+    }
+
+    func testEnsureInitialRadialPositionRespectsLeftDefault() {
+        let viewModel = OverlayViewModel()
+        viewModel.defaultRadialPosition = .left
+
+        viewModel.ensureInitialRadialPosition(in: CGSize(width: 1440, height: 900))
+
+        XCTAssertEqual(viewModel.radialCenter.x, 220, accuracy: 0.0001)
+    }
+
     func testResetShortcutsToDefaultsRestoresAndPersists() throws {
         let preferencesService = UserDefaultsPreferencesService(
             defaults: UserDefaults(suiteName: suiteName) ?? .standard
@@ -1058,6 +1133,11 @@ private final class SpyOverlayService: OverlayService {
 
     func setRadialControlVisible(_ isVisible: Bool) {
         lastRadialVisibleValue = isVisible
+    }
+
+    private(set) var lastRadialDefaultPosition: RadialPosition = .right
+    func setRadialDefaultPosition(_ position: RadialPosition) {
+        lastRadialDefaultPosition = position
     }
 
     func setShortcutBindings(_ bindings: [ShortcutBinding]) {
